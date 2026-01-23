@@ -1,2 +1,0 @@
-# chatCripto
-Chat Crittografia 
