@@ -10,7 +10,7 @@ import threading
 
 server=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-server.bind(('localhost', 12345))
+server.bind(('localhost', 5000))
 
 
 # Dizionario: username → socket
@@ -35,7 +35,7 @@ def gestisci_client(conn, addr):
             # 2. Messaggio privato del tipo: @mario ciao!
             if msg.startswith("@"):
                 try:
-                   
+                   #prendere il nome dopo la chiocciola e metterlo nel dizionario e inviare messaggio a connessione associata ad esso
 
                 except ValueError:
                     conn.send("Formato non valido. Usa: @destinatario messaggio\n".encode())

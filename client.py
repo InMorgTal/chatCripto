@@ -8,24 +8,26 @@ def ricevi(sock):
             if not msg:
                 print("Connessione chiusa dal server.")
                 break
-            
+            print(msg)
         except:
             break
 
+        
+
 def main():
     client = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
-    client.connect
+    client.connect(('localhost', 5000))
 
-    username = input
+    username = input("Inserisci il tuo username")
     client.send(username.encode())
 
     print("Connesso al server!\nScrivi @utente messaggio per i privati.")
 
-    threading.Thread
+    threading.Thread(target=ricevi, args=(client)).start()
 
     while True:
         try:
-            msg = 
+            msg = input(">")
         except:
             break
 
