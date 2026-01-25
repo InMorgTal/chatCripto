@@ -35,7 +35,16 @@ def gestisci_client(conn, addr):
             # 2. Messaggio privato del tipo: @mario ciao!
             if msg.startswith("@"):
                 try:
-                   #prendere il nome dopo la chiocciola e metterlo nel dizionario e inviare messaggio a connessione associata ad esso
+                    msg = "@mario ciao!"
+                    parti = msg.split(" ", 1)  # divide in massimo 2 parti
+                    dest = parti[0][1:]  # rimuove la @ e prende il nome
+                    msg = parti[1]#prendere il nome dopo la chiocciola e metterlo nel dizionario e inviare messaggio a connessione associata ad esso
+
+                    for nome in utenti.keys():
+                        if nome == dest:
+                            utenti[nome].send(f"[{username} a te ]:  {msg}".encode())
+                            break
+
 
                 except ValueError:
                     conn.send("Formato non valido. Usa: @destinatario messaggio\n".encode())
@@ -44,7 +53,7 @@ def gestisci_client(conn, addr):
                 # 3. Messaggio in broadcast
                 for c in utenti.values():
                     if c != conn:
-                        c.send(f"[{username}] {msg}".encode())
+                        c.send(f"[{username} a tutti ]:  {msg}".encode())
             #for nome, sock in utenti.items():
                 #if sock != conn:
                     #sock.send(f"[{username}] {msg}".encode())
