@@ -8,20 +8,20 @@ import socket
 import threading
 
 
-server=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sServer=socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-server.bind(('localhost', 5000))
+sServer.bind(('localhost', 5000))
 
+sServer.listen()
 
-# Dizionario: username → socket
-utenti = {}   #  "mario": <socket di mario>,
-              #  "anna": <socket di anna>
+# username : socket
+utenti = {} 
 
 
 
 
 def gestisci_client(conn, addr):
-    # 1. Il primo messaggio ricevuto è lo username
+    
     username = conn.recv(1024).decode().strip()
     utenti[username] = conn#vogliamo associare a ogni username la relativa socket del client connesso
 
@@ -32,31 +32,34 @@ def gestisci_client(conn, addr):
             if not msg:
                 break
 
-            # 2. Messaggio privato del tipo: @mario ciao!
+            # messaggio privato
             if msg.startswith("@"):
                 try:
-                    msg = "@mario ciao!"
                     parti = msg.split(" ", 1)  # divide in massimo 2 parti
+
+                    if len(parti) < 2:
+                        conn.sendall("Formato non valido. Usa: @destinatario messaggio\n".encode())
+                        continue
+
+
                     dest = parti[0][1:]  # rimuove la @ e prende il nome
+
                     msg = parti[1]#prendere il nome dopo la chiocciola e metterlo nel dizionario e inviare messaggio a connessione associata ad esso
 
-                    for nome in utenti.keys():
-                        if nome == dest:
-                            utenti[nome].send(f"[{username} a te ]:  {msg}".encode())
-                            break
-
+                    if dest in utenti:
+                        utenti[dest].sendall(f"[{username} a te ]: {msg}".encode())
+                    else:
+                        conn.sendall(f"Utente '{dest}' non trovato\n".encode())
 
                 except ValueError:
-                    conn.send("Formato non valido. Usa: @destinatario messaggio\n".encode())
+                    conn.sendall("Formato non valido. Usa: @destinatario messaggio\n".encode())
 
             else:
-                # 3. Messaggio in broadcast
+                # messaggio broadcast
                 for c in utenti.values():
                     if c != conn:
-                        c.send(f"[{username} a tutti ]:  {msg}".encode())
-            #for nome, sock in utenti.items():
-                #if sock != conn:
-                    #sock.send(f"[{username}] {msg}".encode())
+                        c.sendall(f"[{username} a tutti ]:  {msg}".encode())
+           
 
         except:
             break
@@ -77,7 +80,7 @@ def main():
     print("Server con dizionario attivo sulla porta 5000")
 
     while True:
-        conn, addr = server.accept()
+        conn, addr = sServer.accept()
         threading.Thread(target=gestisci_client, args=(conn, addr)).start()
 
 
