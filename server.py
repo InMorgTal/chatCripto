@@ -1,8 +1,3 @@
-'''Implementare una chat client server con Thread che sia in grado di gestire lo scambio di messaggi sia in Broadcast che Unicast.
-l'utente("Client") deve poter scrivere il proprio Username in un dizionario gestito dal server ed essere quindi in grado sia di inviare messaggi a singoli client
-(inserendo l'user destinatario con la seguente dicitura @user ) che in broadcast.
-'''
-
 import socket
 import threading
 from Crypto.PublicKey import RSA
@@ -242,9 +237,6 @@ def sendEncryptedMessageToClient(conn, message, AES_key):
     """
     encrypted_message = encryptMessageAES(message, AES_key)
     conn.sendall(encrypted_message)
-
-
-
 
 def main():
     """
