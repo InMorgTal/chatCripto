@@ -37,14 +37,12 @@ def encrypt(text,cipher):
         text+="0"
         cont_pad+=1
     return cont_pad,cipher.encrypt(text.encode())
-
 #cifrare messaggio
 def cifrare(key, text):
     cipher = AES.new(key, AES.MODE_CBC)
     iv = cipher.iv
     pad_count,cifrato= encrypt(text,cipher)
     return iv, pad_count.to_bytes(1, byteorder='big'), cifrato    #Mandare ogni parametro al server
-
 #decifrare messaggio
 def decifrare(key, encrypted_message, iv, pad_count):
     decrypt = AES.new(key, AES.MODE_CBC, iv)
@@ -63,11 +61,10 @@ def first_time_setup(socket):
     public_key = receiveRSAkey(socket)
     encrypted_AES = encrypt_RSA(public_key, key)
     sendAESkey(encrypted_AES, socket)
-
-
+#globali
 chatPrivate={}
-gruppo={}
 
+gruppo={}
 
 username= ""
 
@@ -90,9 +87,6 @@ def riceviMsg(conn):
             for nomechat in msg["chat"]:
                 print(nomechat)
 
-
-
-
 def caricaChat(conn):
     global username
     msg={
@@ -101,8 +95,6 @@ def caricaChat(conn):
     }
     inviaMsg(conn,msg)
   
-
-
 def inviaMsg(conn,msg):
     msg=(json.dumps(msg)+ "\n").encode()
     iv, cPad, msgCifrato = cifrare(load_aes_key('aes_key.bin'), msg)
@@ -116,6 +108,7 @@ def inviaMsg(conn,msg):
 
     dati_da_inviare = json.dumps(pacchetto) + "\n"
     conn.sendall(dati_da_inviare.encode())
+
 def menu(conn):
     global username
     while True:
