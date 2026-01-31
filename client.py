@@ -104,8 +104,9 @@ def caricaChat(conn):
 
 
 def inviaMsg(conn,msg):
-    
-    conn.sendall((json.dumps(msg)+ "\n").encode())  
+    msg=(json.dumps(msg)+ "\n").encode()
+    iv,cPad, msgCifrato=cifrare(load_aes_key('aes_key.bin'),msg)
+    conn.sendall(msgCifrato.encode())  
 
 def menu(conn):
     global username
