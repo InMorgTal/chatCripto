@@ -27,7 +27,7 @@ def encrypt_RSA(pub, AES_key):
 def sendAESkey(key, socket):
     socket.sendall(key)
 
-def first_time_setup(socket):
+def mandare_AES_key(socket):
     key_file = 'aes_key.bin'
     try:
         key = load_aes_key(key_file)
@@ -172,6 +172,7 @@ def main():
     client.connect(('localhost', 5000))
 
     print("Connesso al server!\n")
+    mandare_AES_key(client)
 
     while True:
         username = input("Inserisci username\n")
