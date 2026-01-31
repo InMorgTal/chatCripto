@@ -6,32 +6,32 @@ import json
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
-#creare chiave AES e salvarla
+#non evocare#creare chiave AES e salvarla
 def create_aes_key(file_path):
     key = get_random_bytes(16)  # AES-128
     with open(file_path, 'wb') as key_file:
         key_file.write(key)
     return key
-#caricare chiave AES da file
+#non evocare#caricare chiave AES da file
 def load_aes_key(file_path):
     with open(file_path, 'rb') as key_file:
         key = key_file.read()
     return key
-
+#non evocare
 def receiveRSAkey(socket):
     pub = socket.recv(1024)
     return pub
-
+#non evocare
 def encrypt_RSA(pub, AES_key):
     n=pub.n
     e=pub.e
     encrypted=pow(AES_key,e,n)
     return encrypted
-
+#non evocare
 def sendAESkey(key, socket):
     socket.sendall(key)
 
-def encrypt_message(text,cipher):
+def encrypt(text,cipher):
     cont_pad=0
     while len(text.encode())%16!=0:#In modalità CBC il messaggio deve avere un multiplo di 16 bytes
         text+="0"
@@ -39,14 +39,14 @@ def encrypt_message(text,cipher):
     return cont_pad,cipher.encrypt(text.encode())
 
 #cifrare messaggio
-def ready_to_send(key, text):
+def cifrare(key, text):
     cipher = AES.new(key, AES.MODE_CBC)
     iv = cipher.iv
-    pad_count,cifrato= encrypt_message(text,cipher)
-    return iv + pad_count.to_bytes(1, byteorder='big') + cifrato
+    pad_count,cifrato= encrypt(text,cipher)
+    return iv + pad_count.to_bytes(1, byteorder='big') + cifrato    #Mandare ogni parametro al server
 
 #decifrare messaggio
-def decrypt_message(key, encrypted_message, iv, pad_count):
+def decifrare(key, encrypted_message, iv, pad_count):
     decrypt = AES.new(key, AES.MODE_CBC, iv)
     text = decrypt.decrypt(encrypted_message)
     if pad_count > 0:
