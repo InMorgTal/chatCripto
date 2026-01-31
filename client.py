@@ -66,7 +66,12 @@ def menu(conn):
 
             case 2:
                 membri=[]
-                user=input("Con chi vuoi parlare?\n")
+                while True:
+                    user=input("Con chi vuoi parlare?\n")
+                    if user != username:
+                        break
+                    print("Non puoi parlare con te stesso!")
+                
                 membri.append(username)
                 membri.append(user)
                 inviaMsg(conn,{"tipo":"iniziaConv","membri":membri})
