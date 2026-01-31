@@ -132,16 +132,16 @@ def inviaMsg(conn,msg):
     msg=(json.dumps(msg)+ "\n").encode()
     iv, cPad, msgCifrato = cifrare(utenti[conn][1], msg)
 
-# Mettiamo tutto in un dizionario
+    # Mettiamo tutto in un dizionario
     pacchetto = {
         "iv": iv,
         "cPad": cPad,
         "msgCifrato": msgCifrato
-}
+    }
 
     dati_da_inviare = json.dumps(pacchetto) + "\n"
     conn.sendall(dati_da_inviare.encode())
-##############################################
+    ##############################################
 
 def creaChiaveChatPrivata(utente1,utente2):       
     nomi=[utente1,utente2]                                      #mi serve una chiave per il dizionario delle chat private e quindi uso i due username ordinati
