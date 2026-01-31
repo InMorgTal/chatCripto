@@ -122,10 +122,7 @@ def riceviMsg(conn):
             msg_decriptato_str = msg_decriptato_bytes.decode()  # da bytes a stringa
             msg = json.loads(msg_decriptato_str)  # messaggio originale JSON
 
-    match msg["tipo"]:
-        case "caricaChat":
-            for nomechat in msg["chat"]:
-                print(nomechat)
+            return msg
 
 def inviaMsg(conn,msg):
     global utenti
