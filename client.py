@@ -43,7 +43,7 @@ def cifrare(key, text):
     cipher = AES.new(key, AES.MODE_CBC)
     iv = cipher.iv
     pad_count,cifrato= encrypt(text,cipher)
-    return iv + pad_count.to_bytes(1, byteorder='big') + cifrato    #Mandare ogni parametro al server
+    return iv, pad_count.to_bytes(1, byteorder='big'), cifrato    #Mandare ogni parametro al server
 
 #decifrare messaggio
 def decifrare(key, encrypted_message, iv, pad_count):
