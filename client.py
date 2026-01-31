@@ -5,58 +5,57 @@ import os
 import json
 
 
-chat ={
-    "privata":{},
-    "gruppo":{}
-} 
+
+chatPrivate={}
+gruppo={}
 
 
-username=""
+username= ""
 
+def riceviMsg(conn):
 
+    buffer = ""
 
-
-def ricevi(conn):
     while True:
-            msg = conn.recv(2048).decode().strip()
-            msg = json.loads(msg)
+        data = conn.recv(2048).decode()
+        if not data:
+            break
+
+        buffer += data
+
+        while "\n" in buffer:
+            msg_str, buffer = buffer.split("\n", 1)
+            msg = json.loads(msg_str)
+    match msg["tipo"]:
+        case "caricaChat":
+            for nomechat in msg["chat"]:
+                print(nomechat)
 
 
 
 
-          
-            
-           
-
-
-def menu(conn):
-    os.system('cls')
-
-    for i in len(chat)
-
-
-
-
-
-
-def caricaChat(conn,nomechat):
+def caricaChat(conn):
      
     msg={
     "tipo": "caricaChat",
     "sorgente":username,
-    "chat":nomechat
     }
-    invia(conn,msg)
+    inviaMsg(conn,msg)
   
 
 
-def invia(conn,msg):
+def inviaMsg(conn,msg):
     
     conn.sendall((json.dumps(msg)+ "\n").encode())  
- 
 
+def menu(conn):
+    
+    while True:
+    
+    os.system('cls')
 
-
+    for i in range(len):
+        print()
 
 
 
@@ -70,13 +69,16 @@ def main():
 
     print("Connesso al server!\n")
 
-    t = threading.Thread(target=ricevi, args=(client,))
+    username=input("Inserisci username")
+
+    msg = {"username":username}
+    inviaMsg(client,msg)
+
+    t = threading.Thread(target=riceviMsg, args=(client,))
     t.start()
 
     menu(client)
 
-    caricaChat(client) 
-    
         
 
 

@@ -236,8 +236,26 @@ def iniziaConversazione(msg):                                                   
         "messaggi":[]
     }
 
-def caricaChat(msg):
+def caricaChat(conn,msg):
     username_cercato = msg["sorgente"]
+    chat=[]
+    for gruppo, info in gruppi.items():
+        if username_cercato in info["membri"]:
+            chat.append(gruppo)
+    for chat, info in chatPrivate.items():
+        if username_cercato in info["membri"]:
+            chat.append(chat)
+
+    msg={
+        "tipo":"caricaChat",
+        "destinazione":username_cercato,
+        "chat":chat
+    }
+    inviaMsg(conn,msg)
+
+'''
+
+
 
     for gruppo, info in gruppi.items():
         if username_cercato in info["membri"]:
@@ -248,8 +266,7 @@ def caricaChat(msg):
         if username_cercato in info["membri"]:
             print(f"{username_cercato} è presente nella chat privata {chat}")
             inviaMsg(utenti[username_cercato],info["messaggi"][-20:])
-
-
+'''
 def inviaMsg(conn,msg):
 
     conn.sendall((json.dumps(msg)+ "\n").encode())  
@@ -273,11 +290,11 @@ def riceviMsg(conn):
 def gestisciClient(conn):
 
     while True:
-        username = conn.recv(2048).decode().strip()
+        username = riceviMsg(conn)["username"]
         
         if username not in utenti:
             break
-        conn.sendall("Username occupato scegline un altro\n".encode())
+        inviaMsg(conn,{"testo":"Username occupato scegline un altro"})
 
     print((f"aggiunto utente: {username}"))
     
@@ -295,7 +312,7 @@ def gestisciClient(conn):
             case "messaggio": messaggio(msg),
             case "creaGruppo": creaGruppo(msg),
             case "iniziaConv":iniziaConversazione(msg),
-            case "caricaChat": caricaChat(msg)
+            case "caricaChat": caricaChat(conn,msg)
 
 
 def main():
@@ -304,8 +321,6 @@ def main():
 
     while True:
         conn, addr = sServer.accept()
-
-        print(f"[+] Connessione da {addr}")
 
         threading.Thread(target=gestisciClient, args=(conn,)).start()
 
