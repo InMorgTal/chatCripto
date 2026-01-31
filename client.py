@@ -6,22 +6,18 @@ import json
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
 
-#non evocare#creare chiave AES e salvarla
+############################################
+#creare chiave AES e salvarla
 def create_aes_key(file_path):
     key = get_random_bytes(16)  # AES-128
     with open(file_path, 'wb') as key_file:
         key_file.write(key)
     return key
-#non evocare#caricare chiave AES da file
-def load_aes_key(file_path):
-    with open(file_path, 'rb') as key_file:
-        key = key_file.read()
-    return key
-#non evocare
+
 def receiveRSAkey(socket):
     pub = socket.recv(1024)
     return pub
-#non evocare
+
 def encrypt_RSA(pub, AES_key):
     n=pub.n
     e=pub.e
@@ -31,12 +27,24 @@ def encrypt_RSA(pub, AES_key):
 def sendAESkey(key, socket):
     socket.sendall(key)
 
+def first_time_setup(socket):
+    key_file = 'aes_key.bin'
+    try:
+        key = load_aes_key(key_file)
+    except FileNotFoundError:
+        key = create_aes_key(key_file)
+
+    public_key = receiveRSAkey(socket)
+    encrypted_AES = encrypt_RSA(public_key, key)
+    sendAESkey(encrypted_AES, socket)
+
 def encrypt(text,cipher):
     cont_pad=0
     while len(text.encode())%16!=0:#In modalità CBC il messaggio deve avere un multiplo di 16 bytes
         text+="0"
         cont_pad+=1
     return cont_pad,cipher.encrypt(text.encode())
+##############################################
 #cifrare messaggio
 def cifrare(key, text):
     cipher = AES.new(key, AES.MODE_CBC)
@@ -50,17 +58,12 @@ def decifrare(key, encrypted_message, iv, pad_count):
     if pad_count > 0:
         return text[:-pad_count].decode()
     return text.decode()
+#caricare chiave AES da file
+def load_aes_key(file_path):
+    with open(file_path, 'rb') as key_file:
+        key = key_file.read()
+    return key
 
-def first_time_setup(socket):
-    key_file = 'aes_key.bin'
-    try:
-        key = load_aes_key(key_file)
-    except FileNotFoundError:
-        key = create_aes_key(key_file)
-
-    public_key = receiveRSAkey(socket)
-    encrypted_AES = encrypt_RSA(public_key, key)
-    sendAESkey(encrypted_AES, socket)
 #globali
 chatPrivate={}
 
@@ -69,19 +72,29 @@ gruppo={}
 username= ""
 
 def riceviMsg(conn):
-
     buffer = ""
 
     while True:
         data = conn.recv(2048).decode()
         if not data:
-            break
+            break  # connessione chiusa
 
         buffer += data
 
         while "\n" in buffer:
             msg_str, buffer = buffer.split("\n", 1)
-            msg = json.loads(msg_str)
+            pacchetto = json.loads(msg_str)  # pacchetto con iv, cPad, msgCifrato
+
+            # Decifriamo il messaggio
+            iv = pacchetto["iv"]
+            cPad = pacchetto["cPad"]
+            msgCifrato = pacchetto["msgCifrato"]
+
+            # Decifra la parte cifrata (devi avere la funzione decifra)
+            msg_decriptato_bytes = decifrare(load_aes_key('aes_key.bin'), iv, cPad, msgCifrato)
+            msg_decriptato_str = msg_decriptato_bytes.decode()  # da bytes a stringa
+            msg = json.loads(msg_decriptato_str)  # messaggio originale JSON
+
     match msg["tipo"]:
         case "caricaChat":
             for nomechat in msg["chat"]:
