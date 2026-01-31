@@ -2,6 +2,7 @@ import socket
 import threading
 from Crypto.PublicKey import RSA
 import json
+from Crypto.Cipher import AES
 
 
 sServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
