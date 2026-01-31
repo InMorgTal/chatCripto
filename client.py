@@ -105,9 +105,17 @@ def caricaChat(conn):
 
 def inviaMsg(conn,msg):
     msg=(json.dumps(msg)+ "\n").encode()
-    iv,cPad, msgCifrato=cifrare(load_aes_key('aes_key.bin'),msg)
-    conn.sendall(msgCifrato.encode())  
+    iv, cPad, msgCifrato = cifrare(load_aes_key('aes_key.bin'), msg)
 
+# Mettiamo tutto in un dizionario
+    pacchetto = {
+        "iv": iv,
+        "cPad": cPad,
+        "msgCifrato": msgCifrato
+}
+
+    dati_da_inviare = json.dumps(pacchetto) + "\n"
+    conn.sendall(dati_da_inviare.encode())
 def menu(conn):
     global username
     while True:
