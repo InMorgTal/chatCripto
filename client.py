@@ -1,31 +1,46 @@
 # Importa le librerie necessarie per la comunicazione via socket e il multithreading
 import socket
 import threading
+import os
+import json
 
-# Funzione che gestisce la ricezione dei messaggi dal server in un thread separato
-def ricevi(sock):
+
+chat ={
+    "privata":{},
+    "gruppo":{}
+} 
+
+def ricevi(conn):
     """
     Riceve continuamente messaggi dal server e li stampa.
     Esegue in un thread separato per non bloccare l'input dell'utente.
     """
+    os.system('cls')
     while True:
-        try:
+            msg = conn.recv(2048).decode().strip()
+            msg = json.loads(msg)
 
-            msg = sock.recv(1024).decode().strip()
 
-            if not msg:
-                print("Connessione chiusa dal server.")
-                break
+
+
+          
             
-            # \r ritorna all'inizio della riga, sovrascrivendo la freccetta precedente
-            # e stampa il messaggio ricevuto
-            print("\r" + msg)  
-            
-            # Ristampa la freccetta (prompt) senza andare a capo
-            # flush=True forza la visualizzazione immediata sullo schermo
-            print(">", end="", flush=True)
-        except:
-            break
+           
+
+
+def invia(conn):
+
+    os.system('cls')
+
+
+
+
+
+
+
+
+
+
 
 def main():
     """
@@ -35,22 +50,21 @@ def main():
 
     client.connect(('localhost', 5000))
 
-    print("Connesso al server!\nScrivi @utente messaggio per i privati.")
+    print("Connesso al server!\n")
 
-    username = input("Inserisci il tuo username: ")
+    t = threading.Thread(target=ricevi, args=(client,))
+    t.start()
+    invia(client)
+        
 
-    client.sendall(username.encode())
-    
-    threading.Thread(target=ricevi, args=(client,)).start()
 
 
-    while True:
-        try:
 
-            msg = input(">")
-            client.sendall(msg.encode())
-        except:
-            break
+
+
+
+
+
 
 if __name__ == "__main__":
     main()

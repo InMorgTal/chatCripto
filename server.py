@@ -1,55 +1,18 @@
 import socket
 import threading
 from Crypto.PublicKey import RSA
+import json
 
 
 sServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 sServer.bind(('localhost', 5000))
 
-sServer.listen()
-
-utenti = {}
-
-def gestisci_client(conn, addr):
-    """
-    Gestisce la comunicazione con un singolo client.
-    - Riceve l'username del client
-    - Verifica che non sia già occupato
-    - Riceve e elabora i messaggi (broadcast o privati)
-    """
-
-    while True:
-        username = conn.recv(1024).decode().strip()
-        
-        if username not in utenti:
-
-            break
-        conn.sendall("Username occupato scegline un altro\n".encode())
-
-    print((f"aggiunto utente: {username}"))
-    
-    utenti[username] = conn
-
-    while True:
-        try:
-
-            msg = conn.recv(1024).decode().strip()
-            
-            if not msg:
-                break
+sServer.listen(20)
 
 
 
-
-
-
-
-
-
-
-
-
+########## crittografia RSA e AES ############
 def generationRSAkeys():
     """
     Genera una coppia di chiavi RSA a 2048 bit e le salva su disco.
@@ -160,9 +123,6 @@ def handleRSAKey(conn):
     decrypted_message = decryptMessageRSA(encrypted_message)
     return decrypted_message
 
-#MANCA GESTIONE PER ONGI CLIENT
-#mANCA LOGICA PER INVIARE IL MESSAGGIO SOLO AL CLIENT MITTENTE
-
 def receiiveEncryptedMessageFromClient(conn):
     """
     Riceve un messaggio cifrato AES dal client.
@@ -237,12 +197,95 @@ def sendEncryptedMessageToClient(conn, message, AES_key):
     """
     encrypted_message = encryptMessageAES(message, AES_key)
     conn.sendall(encrypted_message)
+##################################################
+
+gruppi={} 
+
+chatPrivate={}
+
+utenti = {}
+
+
+def messaggio(msg):
+    if msg["destinazione"] in gruppi:
+        gruppi[msg["destinazione"]]["messaggi"].append(msg)
+    else:
+        chiavePrivata=creaChiaveChatPrivata(msg["sorgente"],msg["destinazione"])
+        chatPrivate[chiavePrivata]["messaggi"].append(msg)
+
+
+def creaGruppo(msg):
+
+    if msg["destinazione"] not in gruppi: 
+        gruppi[msg["destinazione"]]={
+        "membri":[msg["membri"]],
+        "messaggi":[]
+    }
+    
+def creaChiaveChatPrivata(utente1,utente2):
+    return tuple(sorted(utente1, utente2))
+
+
+def iniziaConversazione(msg):
+
+    chiaveChat=creaChiaveChatPrivata(msg["sorgente"],msg["destinazione"])
+    chatPrivate [chiaveChat]={
+        "membri":[msg["sorgente"],msg["destinazione"]],
+        "messaggi":[]
+    }
+
+def riceviMsg(conn):
+
+    buffer = ""
+
+    while True:
+        data = conn.recv(1024).decode()
+        if not data:
+            break
+
+        buffer += data
+
+        while "\n" in buffer:
+            msg_str, buffer = buffer.split("\n", 1)
+            msg = json.loads(msg_str)
+        return msg
+
+
+def gestisciClient(conn):
+
+    while True:
+        username = conn.recv(1024).decode().strip()
+        
+        if username not in utenti:
+            break
+        conn.sendall("Username occupato scegline un altro\n".encode())
+
+    print((f"aggiunto utente: {username}"))
+    
+    utenti[username] = conn
+
+    msg=riceviMsg(conn)
+    
+    print("Messaggio ricevuto:", msg)
+
+    tipoMsg = msg["type"]
+
+    switch = {
+        "messaggio": messaggio,
+        "creagruppo": creaGruppo,
+        "iniziaconv":iniziaConversazione,
+    }
+
+    switch[tipoMsg](msg)
+
+
+
+
+
+
+
 
 def main():
-    """
-    Avvia il server e rimane in ascolto per accettare connessioni dai client.
-    Per ogni client che si connette, crea un thread separato che lo gestisce.
-    """
 
     print("Server attivo e in ascolto...")
 
@@ -251,9 +294,8 @@ def main():
 
         print(f"[+] Connessione da {addr}")
 
-        threading.Thread(target=gestisci_client, args=(conn, addr)).start()
+        threading.Thread(target=gestisciClient, args=(conn,)).start()
 
 
-# Punto di ingresso del programma
 if __name__ == "__main__":
     main()
