@@ -3,6 +3,8 @@ import socket
 import threading
 import os
 import json
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
 
 #creare chiave AES e salvarla
 def create_aes_key(file_path):
