@@ -10,12 +10,13 @@ chat ={
     "gruppo":{}
 } 
 
+
+username=""
+
+
+
+
 def ricevi(conn):
-    """
-    Riceve continuamente messaggi dal server e li stampa.
-    Esegue in un thread separato per non bloccare l'input dell'utente.
-    """
-    os.system('cls')
     while True:
             msg = conn.recv(2048).decode().strip()
             msg = json.loads(msg)
@@ -28,14 +29,30 @@ def ricevi(conn):
            
 
 
-def invia(conn):
-
+def menu(conn):
     os.system('cls')
 
+    for i in len(chat)
 
 
 
 
+
+
+def caricaChat(conn):
+     
+    msg={
+    "tipo": "caricaChat",
+    "sorgente":username
+    }
+    invia(conn,msg)
+  
+
+
+def invia(conn,msg):
+    
+    conn.sendall((json.dumps(msg)+ "\n").encode())  
+ 
 
 
 
@@ -54,7 +71,9 @@ def main():
 
     t = threading.Thread(target=ricevi, args=(client,))
     t.start()
-    invia(client)
+
+    caricaChat(client) 
+    menu(client)
         
 
 

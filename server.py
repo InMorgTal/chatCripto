@@ -197,7 +197,7 @@ def sendEncryptedMessageToClient(conn, message, AES_key):
     """
     encrypted_message = encryptMessageAES(message, AES_key)
     conn.sendall(encrypted_message)
-##################################################
+##############################################
 
 gruppi={} 
 
@@ -236,17 +236,30 @@ def iniziaConversazione(msg):                                                   
         "messaggi":[]
     }
 
+def caricaChat(msg):
+    username_cercato = msg["sorgente"]
+
+    for gruppo, info in gruppi.items():
+        if username_cercato in info["membri"]:
+            print(f"{username_cercato} è presente in {gruppo}")
+            inviaMsg(utenti[username_cercato],info["messaggi"][-20:])
+        
+    for chat, info in chatPrivate.items():
+        if username_cercato in info["membri"]:
+            print(f"{username_cercato} è presente nella chat privata {chat}")
+            inviaMsg(utenti[username_cercato],info["messaggi"][-20:])
+
+
 def inviaMsg(conn,msg):
 
-    conn.sendall(msg.encode())
-
+    conn.sendall((json.dumps(msg)+ "\n").encode())  
 
 def riceviMsg(conn):
 
     buffer = ""
 
     while True:
-        data = conn.recv(1024).decode()
+        data = conn.recv(2048).decode()
         if not data:
             break
 
@@ -260,7 +273,7 @@ def riceviMsg(conn):
 def gestisciClient(conn):
 
     while True:
-        username = conn.recv(1024).decode().strip()
+        username = conn.recv(2048).decode().strip()
         
         if username not in utenti:
             break
@@ -270,19 +283,19 @@ def gestisciClient(conn):
     
     utenti[username] = conn
 
-    msg=riceviMsg(conn)
-    
-    print("Messaggio ricevuto:", msg)
+    while True:
 
-    tipoMsg = msg["type"]
+        msg=riceviMsg(conn)
+        
+        print("Messaggio ricevuto:", msg)
 
-    switch = {
-        "messaggio": messaggio,
-        "creagruppo": creaGruppo,
-        "iniziaconv":iniziaConversazione,
-    }
+        tipoMsg = msg["tipo"]
 
-    switch[tipoMsg](msg)
+        match tipoMsg:
+            case "messaggio": messaggio(msg),
+            case "creaGruppo": creaGruppo(msg),
+            case "iniziaConv":iniziaConversazione(msg),
+            case "caricaChat": caricaChat(msg)
 
 
 def main():
