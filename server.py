@@ -1,8 +1,8 @@
 import socket
 import threading
 from Crypto.PublicKey import RSA
-import json
 from Crypto.Cipher import AES
+import json
 
 
 sServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -11,7 +11,11 @@ sServer.bind(('localhost', 5000))
 
 sServer.listen(20)
 
+gruppi={} 
 
+chatPrivate={}
+
+utenti = {}
 
 ########## crittografia RSA e AES ############
 def decifrare(key, encrypted_message, iv, pad_count):
@@ -44,7 +48,11 @@ def receiveEncryptedAESFromClient(conn):
     AES_key = conn.recv(4096)  # Dimensione buffer adeguata al messaggio cifrato
     return AES_key
 
-def decryptMessageRSA(AES_key_encrypted):
+def save_aes_key(nome, key, conn):
+    global utenti
+    utenti[conn] = [nome, key]
+
+def decryptMessageRSA(AES_key_encrypted, conn):
 
     private_key_data = open("generate_RSA_keys/private_key.pem", "rb").read()
     pvt = RSA.import_key(private_key_data, passphrase="ciaoSonoUnaPassword")
@@ -59,12 +67,14 @@ def decryptMessageRSA(AES_key_encrypted):
     key_length_bytes = (pvt.size_in_bits() + 7) // 8
     AES_key = decrypted_int.to_bytes(key_length_bytes, byteorder='big').lstrip(b'\x00')
 
+    save_aes_key(utenti[conn][0], AES_key, conn)
+
     return AES_key
 
 def handleRSAKey(conn):
     sendPublicKeyToClient(conn)
     encrypted_message = receiveEncryptedAESFromClient(conn)
-    decrypted_message = decryptMessageRSA(encrypted_message)
+    decrypted_message = decryptMessageRSA(encrypted_message, conn)
     return decrypted_message
 
 def decifrare(key, encrypted_message, iv, pad_count):
@@ -88,6 +98,7 @@ def cifrare(key, text):
     return iv + pad_count.to_bytes(1, byteorder='big') + cifrato
 
 def riceviMsg(conn):
+    global utenti
     buffer = ""
 
     while True:
@@ -107,7 +118,7 @@ def riceviMsg(conn):
             msgCifrato = pacchetto["msgCifrato"]
 
             # Decifra la parte cifrata (devi avere la funzione decifra)
-            msg_decriptato_bytes = decifrare(load_aes_key('aes_key.bin'), iv, cPad, msgCifrato)
+            msg_decriptato_bytes = decifrare(utenti[conn][1], iv, cPad, msgCifrato)
             msg_decriptato_str = msg_decriptato_bytes.decode()  # da bytes a stringa
             msg = json.loads(msg_decriptato_str)  # messaggio originale JSON
 
@@ -117,8 +128,9 @@ def riceviMsg(conn):
                 print(nomechat)
 
 def inviaMsg(conn,msg):
+    global utenti
     msg=(json.dumps(msg)+ "\n").encode()
-    iv, cPad, msgCifrato = cifrare(load_aes_key('aes_key.bin'), msg)
+    iv, cPad, msgCifrato = cifrare(utenti[conn][1], msg)
 
 # Mettiamo tutto in un dizionario
     pacchetto = {
@@ -130,13 +142,6 @@ def inviaMsg(conn,msg):
     dati_da_inviare = json.dumps(pacchetto) + "\n"
     conn.sendall(dati_da_inviare.encode())
 ##############################################
-
-gruppi={} 
-
-chatPrivate={}
-
-utenti = {}
-
 
 def creaChiaveChatPrivata(utente1,utente2):       
     nomi=[utente1,utente2]                                      #mi serve una chiave per il dizionario delle chat private e quindi uso i due username ordinati
