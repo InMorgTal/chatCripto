@@ -206,33 +206,40 @@ chatPrivate={}
 utenti = {}
 
 
-def messaggio(msg):
-    if msg["destinazione"] in gruppi:
-        gruppi[msg["destinazione"]]["messaggi"].append(msg)
-    else:
-        chiavePrivata=creaChiaveChatPrivata(msg["sorgente"],msg["destinazione"])
-        chatPrivate[chiavePrivata]["messaggi"].append(msg)
+def creaChiaveChatPrivata(utente1,utente2):                                             #mi serve una chiave per il dizionario delle chat private e quindi uso i due username ordinati
+    return tuple(sorted(utente1, utente2))                                              #in modo da essere semre nello stesso ordine dato che potrebbero essere sia in sorgente che destinazione
 
+def messaggio(msg):
+    if msg["destinazione"] in gruppi:                                                   #invio messaggio gruppo
+        gruppi[msg["destinazione"]]["messaggi"].append(msg)
+        for username in gruppi["membri"]:
+            if username != msg["sorgente"]:
+                inviaMsg(utenti[username],msg)
+    else:
+        chiavePrivata=creaChiaveChatPrivata(msg["sorgente"],msg["destinazione"])        #invio messaggio privata
+        chatPrivate[chiavePrivata]["messaggi"].append(msg)
+        for username in chatPrivate[chiavePrivata]["membri"]:
+            if username != msg["sorgente"]:
+                inviaMsg(utenti[username],msg)
 
 def creaGruppo(msg):
-
-    if msg["destinazione"] not in gruppi: 
+    if msg["destinazione"] not in gruppi:                                               #creo gruppo
         gruppi[msg["destinazione"]]={
         "membri":[msg["membri"]],
         "messaggi":[]
     }
     
-def creaChiaveChatPrivata(utente1,utente2):
-    return tuple(sorted(utente1, utente2))
-
-
-def iniziaConversazione(msg):
-
+def iniziaConversazione(msg):                                                           #creo chat privata
     chiaveChat=creaChiaveChatPrivata(msg["sorgente"],msg["destinazione"])
     chatPrivate [chiaveChat]={
         "membri":[msg["sorgente"],msg["destinazione"]],
         "messaggi":[]
     }
+
+def inviaMsg(conn,msg):
+
+    conn.sendall(msg.encode())
+
 
 def riceviMsg(conn):
 
@@ -249,7 +256,6 @@ def riceviMsg(conn):
             msg_str, buffer = buffer.split("\n", 1)
             msg = json.loads(msg_str)
         return msg
-
 
 def gestisciClient(conn):
 
@@ -277,12 +283,6 @@ def gestisciClient(conn):
     }
 
     switch[tipoMsg](msg)
-
-
-
-
-
-
 
 
 def main():
