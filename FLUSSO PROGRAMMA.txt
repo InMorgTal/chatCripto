@@ -1,0 +1,113 @@
+Il server:
+
+mantiene connessioni
+
+mantiene chat (private e gruppi)
+
+mantiene storico messaggi
+
+inoltra messaggi in real-time
+
+1️⃣ Avvio server
+
+server avvia socket
+server accetta connessioni
+per ogni client → thread dedicato
+
+2️⃣ Client si connette
+
+invia username
+server salva:
+utenti[username] = conn
+
+
+3️⃣ Server THREAD CLIENT
+
+Il thread rimane sempre in ascolto:
+while True:
+    ricevi JSON
+    capisci il tipo
+    agisci
+
+
+
+4️⃣ Client apre una chat
+
+Client → server:
+{
+  "type": "get_history",
+  "chat_id": "anna:luca"
+}
+
+Server:
+trova la chat
+prende messages[-N:]
+risponde con UN SOLO JSON
+
+{
+  "type": "history",
+  "chat_id": "anna:luca",
+  "messages": [...]
+}
+
+
+5️⃣ Client riceve history
+Client:
+svuota la UI
+carica i messaggi ricevuti
+NON richiede più lo storico
+
+
+
+6️⃣ Client invia un messaggio
+Client → server:
+
+{
+  "type": "message",
+  "chat_id": "anna:luca",
+  "from": "anna",
+  "text": "ciao"
+}
+
+
+
+7️⃣ Server gestisce messaggio
+Server:
+salva il messaggio nello storico
+inoltra il messaggio ai membri
+chat["messages"].append(msg)
+for utente in chat["membri"]:
+    if utente in utenti:
+        utenti[utente].sendall(...)
+
+
+👉 UN messaggio alla volta
+
+
+
+8️⃣ Client riceve messaggio realtime
+
+Client:
+aggiunge il messaggio alla chat 
+
+
+9️⃣ Chat nuova (privata o gruppo)
+
+Client → server:
+{
+  "type": "create_chat",
+  "membri": ["anna", "luca"]
+}
+
+
+Server:
+
+crea struttura vuota
+
+risponde OK
+
+Client:
+
+apre chat
+
+chiede lo storico → riceve lista vuota

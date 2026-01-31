@@ -39,11 +39,12 @@ def menu(conn):
 
 
 
-def caricaChat(conn):
+def caricaChat(conn,nomechat):
      
     msg={
     "tipo": "caricaChat",
-    "sorgente":username
+    "sorgente":username,
+    "chat":nomechat
     }
     invia(conn,msg)
   
@@ -72,8 +73,10 @@ def main():
     t = threading.Thread(target=ricevi, args=(client,))
     t.start()
 
-    caricaChat(client) 
     menu(client)
+
+    caricaChat(client) 
+    
         
 
 
