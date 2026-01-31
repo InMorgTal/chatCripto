@@ -206,8 +206,9 @@ chatPrivate={}
 utenti = {}
 
 
-def creaChiaveChatPrivata(utente1,utente2):                                             #mi serve una chiave per il dizionario delle chat private e quindi uso i due username ordinati
-    return tuple(sorted(utente1, utente2))                                              #in modo da essere semre nello stesso ordine dato che potrebbero essere sia in sorgente che destinazione
+def creaChiaveChatPrivata(utente1,utente2):       
+    nomi=[utente1,utente2]                                      #mi serve una chiave per il dizionario delle chat private e quindi uso i due username ordinati
+    return tuple(sorted(nomi))                                              #in modo da essere semre nello stesso ordine dato che potrebbero essere sia in sorgente che destinazione
 
 def messaggio(msg):
     if msg["destinazione"] in gruppi:                                                   #invio messaggio gruppo
@@ -230,9 +231,9 @@ def creaGruppo(msg):
     }
     
 def iniziaConversazione(msg):                                                           #creo chat privata
-    chiaveChat=creaChiaveChatPrivata(msg["sorgente"],msg["destinazione"])
+    chiaveChat=creaChiaveChatPrivata(msg["membri"][0],msg["membri"][1])
     chatPrivate [chiaveChat]={
-        "membri":[msg["sorgente"],msg["destinazione"]],
+        "membri":[msg["membri"][0],msg["membri"][1]],
         "messaggi":[]
     }
 
@@ -242,9 +243,9 @@ def caricaChat(conn,msg):
     for gruppo, info in gruppi.items():
         if username_cercato in info["membri"]:
             chat.append(gruppo)
-    for chat, info in chatPrivate.items():
+    for private, info in chatPrivate.items():
         if username_cercato in info["membri"]:
-            chat.append(chat)
+            chat.append(private)
 
     msg={
         "tipo":"caricaChat",

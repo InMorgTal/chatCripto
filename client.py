@@ -35,7 +35,7 @@ def riceviMsg(conn):
 
 
 def caricaChat(conn):
-     
+    global username
     msg={
     "tipo": "caricaChat",
     "sorgente":username,
@@ -49,17 +49,43 @@ def inviaMsg(conn,msg):
     conn.sendall((json.dumps(msg)+ "\n").encode())  
 
 def menu(conn):
-    
+    global username
     while True:
-    
-    os.system('cls')
+        print("\n--- MENU ---")
+        print("1) Mostra lista chat")
+        print("2) Inizia conversazione privata")
+        print("3) Crea un gruppo")
+        print("4) Esci")
 
-    for i in range(len):
-        print()
+        scelta = input("Scegli un’opzione: ")
 
+        match int(scelta):
+            case 1:
+                os.system('cls')
+                caricaChat(conn)
+
+            case 2:
+                membri=[]
+                user=input("Con chi vuoi parlare?\n")
+                membri.append(username)
+                membri.append(user)
+                inviaMsg(conn,{"tipo":"iniziaConv","membri":membri})
+            case 3:
+                membri=[]
+                while True:
+                    
+                    user=input("Inserisci partecipanti (0 per terminare selezione)")
+                    if user != "0":
+                        membri.append(user)
+                    else:
+                        break
+                    
+                membri.append(username)
+                inviaMsg(conn,{"tipo":"creaGruppo","membri":membri})
 
 
 def main():
+    global username
     """
     Inizializza la connessione al server e gestisce l'input dell'utente.
     """
@@ -69,15 +95,19 @@ def main():
 
     print("Connesso al server!\n")
 
-    username=input("Inserisci username")
+    while True:
+        username = input("Inserisci username\n")
+        if len(username)>3:
+            break
+        print("Troppo corto")
 
     msg = {"username":username}
     inviaMsg(client,msg)
 
     t = threading.Thread(target=riceviMsg, args=(client,))
     t.start()
-
     menu(client)
+    
 
         
 
