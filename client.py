@@ -162,7 +162,6 @@ def menu(conn):
                 membri.append(username)
                 inviaMsg(conn,{"tipo":"creaGruppo","membri":membri})
 
-
 def main():
     global username
     """
@@ -187,17 +186,5 @@ def main():
     t.start()
     menu(client)
     
-
-        
-
-
-
-
-
-
-
-
-
-
 if __name__ == "__main__":
     main()
