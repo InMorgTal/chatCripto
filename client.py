@@ -3,52 +3,67 @@ import socket
 import threading
 import os
 import json
+from Crypto.PublicKey import RSA
 from Crypto.Cipher import AES
 from Crypto.Random import get_random_bytes
+from Crypto.Util.number import bytes_to_long,long_to_bytes
 
 ############################################
 #creare chiave AES e salvarla
 def create_aes_key(file_path):
+    global my_iv
     key = get_random_bytes(16)  # AES-128
+    cipher=AES.new(key,mode=AES.MODE_CBC)
+    my_iv = cipher.iv
     with open(file_path, 'wb') as key_file:
-        key_file.write(key)
+        key_file.write(bytes_to_long(cipher))
     return key
 
 def receiveRSAkey(socket):
-    pub = socket.recv(1024)
+    pub = socket.recv(1024).decode()
+    pub=RSA.import_key(pub)
+    print("rcv")
     return pub
 
 def encrypt_RSA(pub, AES_key):
     n=pub.n
     e=pub.e
-    encrypted=pow(AES_key,e,n)
+    encrypted=pow(bytes_to_long(AES_key),e,n)
+    print("encr")
     return encrypted
 #non evocare
 def sendAESkey(key, socket):
-    socket.sendall(key)
+    print("send")
+    socket.sendall(long_to_bytes(key))
 
 def mandare_AES_key(socket):
     key_file = 'aes_key.bin'
     try:
-        key = load_aes_key(key_file)
+        print("loadAES")
+        key, iv = load_aes_key(key_file)
     except FileNotFoundError:
-        key = create_aes_key(key_file)
+        print("createAES")
+        key, iv = create_aes_key(key_file)
 
+    print("inizio rcv pub key")
     public_key = receiveRSAkey(socket)
+    print("encrypt aes ")
     encrypted_AES = encrypt_RSA(public_key, key)
+    print("manda aes criptata")
     sendAESkey(encrypted_AES, socket)
 
 def encrypt(text,cipher):
     cont_pad=0
-    while len(text.encode())%16!=0:#In modalità CBC il messaggio deve avere un multiplo di 16 bytes
+    while len(text)%16!=0:#In modalità CBC il messaggio deve avere un multiplo di 16 bytes
         text+="0"
         cont_pad+=1
     return cont_pad,cipher.encrypt(text.encode())
 ##############################################
 #cifrare messaggio
 def cifrare(key, text):
-    cipher = AES.new(key, AES.MODE_CBC)
-    iv = cipher.iv
+    global my_iv
+    iv = my_iv
+    cipher = load_aes_key()
     pad_count,cifrato= encrypt(text,cipher)
     return iv, pad_count.to_bytes(1, byteorder='big'), cifrato    #Mandare ogni parametro al server
 #decifrare messaggio
@@ -61,10 +76,11 @@ def decifrare(key, encrypted_message, iv, pad_count):
 #caricare chiave AES da file
 def load_aes_key(file_path):
     with open(file_path, 'rb') as key_file:
-        key = key_file.read()
+        key = long_to_bytes(key_file.read())
     return key
 
 #globali
+my_iv = ""
 chatPrivate={}
 
 gruppo={}
@@ -109,8 +125,9 @@ def caricaChat(conn):
     inviaMsg(conn,msg)
   
 def inviaMsg(conn,msg):
-    msg=(json.dumps(msg)+ "\n").encode()
-    iv, cPad, msgCifrato = cifrare(load_aes_key('aes_key.bin'), msg)
+    aes_key = load_aes_key()
+    msg = (json.dumps(msg)+ "\n").encode()
+    iv, cPad, msgCifrato = cifrare(aes_key, msg)
 
 # Mettiamo tutto in un dizionario
     pacchetto = {
@@ -126,10 +143,10 @@ def menu(conn):
     global username
     while True:
         print("\n--- MENU ---")
-        print("1) Mostra lista chat")
-        print("2) Inizia conversazione privata")
-        print("3) Crea un gruppo")
-        print("4) Esci")
+        print("[1] Mostra lista chat")
+        print("[2] Inizia conversazione privata")
+        print("[3] Crea un gruppo")
+        print("[4] Esci")
 
         scelta = input("Scegli un’opzione: ")
 
@@ -164,16 +181,15 @@ def menu(conn):
 
 def main():
     global username
-    """
-    Inizializza la connessione al server e gestisce l'input dell'utente.
-    """
+    print("main attivato")
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     client.connect(('localhost', 5000))
-
-    print("Connesso al server!\n")
+    print("inizioMandareAES")
     mandare_AES_key(client)
 
+    print("Connesso al server!\n")
+    
     while True:
         username = input("Inserisci username\n")
         if len(username)>3:
