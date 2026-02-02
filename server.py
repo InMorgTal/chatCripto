@@ -26,7 +26,7 @@ def decifrare(key, encrypted_message, iv, pad_count):
     return text.decode()
 
 def generationRSAkeys():
-
+    print("generazioneRsA")
     key = RSA.generate(2048)
 
     private_key = key.export_key(passphrase="ciaoSonoUnaPassword")
@@ -36,21 +36,25 @@ def generationRSAkeys():
     public_key = key.publickey().export_key()
     with open("generate_RSA_keys/public_key.pem", "wb") as f:
         f.write(public_key)
+    print("Fine generazioneRsA")
 
 def sendPublicKeyToClient(conn):
-
+    print("manda chiave pubblica")
     with open("generate_RSA_keys/public_key.pem", "rb") as f:
         public_key_data = f.read()
     
     conn.sendall(public_key_data)
+    print("fine chiave pubblica")
 
-def receiveEncryptedAESFromClient(conn):       
+def receiveEncryptedAESFromClient(conn):   
+    print("riceve chiave aes")    
     AES_key = conn.recv(4096)  # Dimensione buffer adeguata al messaggio cifrato
+    print("fine chiave aes")  
     return AES_key
 
-def save_aes_key(nome, key, conn):
+def save_aes_key(nome, key):
     global utenti
-    utenti[conn] = [nome, key]
+    utenti[nome].append(key)
 
 def decryptMessageRSA(AES_key_encrypted, conn):
 
@@ -66,8 +70,6 @@ def decryptMessageRSA(AES_key_encrypted, conn):
     # Calcola la lunghezza in byte della chiave privata
     key_length_bytes = (pvt.size_in_bits() + 7) // 8
     AES_key = decrypted_int.to_bytes(key_length_bytes, byteorder='big').lstrip(b'\x00')
-
-    save_aes_key(utenti[conn][0], AES_key, conn)
 
     return AES_key
 
@@ -223,17 +225,18 @@ def riceviMsg(conn):
         return msg
 
 def gestisciClient(conn):
+    decrypted_message = handleRSAKey(conn)
 
     while True:
-        username = riceviMsg(conn)["username"]
-        
+        username = riceviMsg(conn)
+        save_aes_key(username, decrypted_message)
         if username not in utenti:
             break
         inviaMsg(conn,{"testo":"Username occupato scegline un altro"})
 
     print((f"aggiunto utente: {username}"))
     
-    utenti[username] = conn
+    utenti[username] = [conn]
 
     while True:
 
@@ -251,12 +254,11 @@ def gestisciClient(conn):
 
 
 def main():
-
+    generationRSAkeys()
     print("Server attivo e in ascolto...")
 
     while True:
         conn, addr = sServer.accept()
-
         threading.Thread(target=gestisciClient, args=(conn,)).start()
 
 
