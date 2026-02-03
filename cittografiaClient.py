@@ -5,39 +5,9 @@ from Crypto.Util.number import bytes_to_long,long_to_bytes
 from Crypto.Protocol.KDF import PBKDF2
 from Crypto.Hash import SHA256
 import socket
-#Client
-############################################
-#creare chiave AES e salvarla
+import Key
 
-global contatore
 global hash_value
-
-class Key:
-    contatore = 0
-    def __init__(self, key, tag, salt, password):
-        self.id = Key.contatore
-        self.key = key
-        self.tag = tag
-        self.salt = salt
-        self.password = password
-        Key.contatore += 1
-    def criptare(self, testo):
-        master_key = PBKDF2(self.password, self.salt, dkLen=32, count=200000)
-        cipher = AES.new(master_key, AES.MODE_GCM, nonce=self.id.to_bytes(16, byteorder='big'))
-        encrypted_text, tag = cipher.encrypt_and_digest(testo.encode())
-        return encrypted_text, tag
-    def decriptare(self, encrypted_text, tag):
-        master_key = PBKDF2(self.password, self.salt, dkLen=32, count=200000)
-        cipher = AES.new(master_key, AES.MODE_GCM, nonce=self.id.to_bytes(16, byteorder='big'))
-        decrypted_text = cipher.decrypt_and_verify(encrypted_text, tag)
-        return decrypted_text.decode()
-    def to_string(self):
-        return f"{self.id},{self.key.hex()},{self.tag.hex()},{self.salt.hex()},{self.password}"
-    def to_bytes(self):
-        return (f"{self.id},{self.key.hex()},{self.tag.hex()},{self.salt.hex()},{self.password}").encode()
-    def __str__(self):
-        return f"Key(id={self.id}, key={self.key}, tag={self.tag}, salt={self.salt}, password={self.password})"
-
 
 def hash(data):
     data = data.encode()
@@ -45,28 +15,35 @@ def hash(data):
     hasher.update(data)
     return hasher.hexdigest()
 
-def creazione_aes_key(key):
+def creazione_aes_key():
     global hash_value
-    
-    password = input("Inserisci la password per proteggere la chiave AES: ")
-    hash_value = hash(password)
-    key_master = PBKDF2(password, salt, dkLen=32, count=200000)
-
     salt = get_random_bytes(16)
     key_to_save = get_random_bytes(32)
-    cipher = AES.new(key_master, AES.MODE_GCM, key.id)
-    encrypted_key, tag = cipher.encrypt_and_digest(key_to_save)
+    nonce = get_random_bytes(12)
 
+    password = input("Inserisci la password per proteggere la chiave AES: ")
+    hash_val = hash(password)
+    key_master = PBKDF2(password, salt, dkLen=32, count=200000)
+    cipher = AES.new(key_master, AES.MODE_GCM, nonce=nonce)
+    encrypted_key, tag = cipher.encrypt_and_digest(key_to_save)
+    key = Key.Key(key=key_to_save, nonce=nonce)
     with open("aes.key", "wb") as f:
         f.write(salt)
-        f.write(key.id.to_bytes(16, byteorder='big'))
         f.write(tag)
         f.write(encrypted_key)
-
-#SETUP: creare chiave AES se non esiste MA se esiste fare invece il load
-
-def esporta_aes_key(file_path='aes.key', aes_key=Key()):
+        f.write(hash_val.encode())
     global hash_value
+    hash_value = hash_val
+    return key
+
+def esporta_aes_key(file_path='aes.key'):
+    with open(file_path, 'rb') as f:
+        salt = f.read(16)
+        tag = f.read(16)
+        encrypted_key = f.read(32)
+        hash_val = f.read(64).decode() # SHA256 hex digest è 64 caratteri
+    global hash_value
+    hash_value = hash_val
     for i in range(3):
         password = input("Inserisci la password per decriptare la chiave AES: ")
         if hash(password) != hash_value:
@@ -76,28 +53,29 @@ def esporta_aes_key(file_path='aes.key', aes_key=Key()):
                 print("Password errata, riprova.(tentativo {}/{})".format(i+1, 3))
         else:
             break
-    aes_key.password = password
-    with open(file_path, 'rb') as f:
-        salt = f.read(16)
-        nonce = f.read(16)
-        tag = f.read(16)
-        encrypted_key = f.read()
+    key_master = PBKDF2(password, salt, dkLen=32, count=200000)
+    cipher = AES.new(key_master, AES.MODE_GCM)
+    key_to_save = cipher.decrypt_and_verify(encrypted_key, tag)
+    key = Key.Key(key=key_to_save, nonce=cipher.nonce)
+    return key
 
-    aes_key.id = nonce
-    aes_key.salt = salt
-    aes_key.tag = tag
-    aes_key.key = encrypted_key
-    
+def get_aes_key():
+    import os
+    if not os.path.exists('aes.key'):
+        return creazione_aes_key()
+    else:
+        return esporta_aes_key('aes.key')
+
 def ricevere_RSAkey(socket):
-    pub = socket.recv(1024).decode()
-    pub=RSA.import_key(pub)
+    pub = socket.recv(4096)
+    pub = RSA.import_key(pub)
     print("rcv")
     return pub
 
 def cripta_RSA(pub, aes_key):
     n=pub.n
     e=pub.e
-    encrypted=pow(bytes_to_long(aes_key.to_bytes()),e,n)
+    encrypted=pow(bytes_to_long(aes_key.key),e,n)
     print("encr")
     return encrypted
 
@@ -105,27 +83,32 @@ def sendAESkey(encrypted_key, socket):
     print("send")
     socket.sendall(long_to_bytes(encrypted_key))
 
-def aes_key(key):
-    with open('aes_key.bin', 'r') as f:
-        if not f.read(1):
-            creazione_aes_key(key)
-            esporta_aes_key('aes_key.bin', key)
-        else:
-            esporta_aes_key('aes_key.bin', key)
-#fine parte client
-
 def main():
-    key = Key()
-    aes_key(key)
+    key = get_aes_key()
 
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(('localhost', 5000))
 
     print("connesso al server!")
 
+    user = input("inserire nome utente: ")
+    client.sendall(user.encode())
+
     public_key = ricevere_RSAkey(client)
     encripted_key = cripta_RSA(public_key, key)
     sendAESkey(encripted_key, client)
+
+    testo = input("inserire messaggio da inviare: ")
+    encrypted_text, tag = key.criptare(testo)
+    print("testo criptato:", encrypted_text.hex())
+    client.sendall(tag + encrypted_text)
+
+    tag = client.recv(16)
+    encrypted_response = client.recv(4096)
+    decrypted_response = key.decriptare(encrypted_response, tag)
+    print("Risposta dal server:", decrypted_response.decode() if isinstance(decrypted_response, bytes) else decrypted_response)
+
+    client.close()
 
 if __name__ == "__main__":
     main()
