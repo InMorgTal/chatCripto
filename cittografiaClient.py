@@ -45,9 +45,8 @@ def hash(data):
     hasher.update(data)
     return hasher.hexdigest()
 
-def creazione_aes_key():
+def creazione_aes_key(key):
     global hash_value
-    global contatore
     
     password = input("Inserisci la password per proteggere la chiave AES: ")
     hash_value = hash(password)
@@ -55,19 +54,18 @@ def creazione_aes_key():
 
     salt = get_random_bytes(16)
     key_to_save = get_random_bytes(32)
-    cipher = AES.new(key_master, AES.MODE_GCM, contatore)
+    cipher = AES.new(key_master, AES.MODE_GCM, key.id)
     encrypted_key, tag = cipher.encrypt_and_digest(key_to_save)
 
     with open("aes.key", "wb") as f:
         f.write(salt)
-        f.write(cipher.nonce)
+        f.write(key.id.to_bytes(16, byteorder='big'))
         f.write(tag)
         f.write(encrypted_key)
-    contatore += 1
 
 #SETUP: creare chiave AES se non esiste MA se esiste fare invece il load
 
-def aes_key(file_path='aes.key', aes_key=Key()):
+def esporta_aes_key(file_path='aes.key', aes_key=Key()):
     global hash_value
     for i in range(3):
         password = input("Inserisci la password per decriptare la chiave AES: ")
@@ -85,6 +83,7 @@ def aes_key(file_path='aes.key', aes_key=Key()):
         tag = f.read(16)
         encrypted_key = f.read()
 
+    aes_key.id = nonce
     aes_key.salt = salt
     aes_key.tag = tag
     aes_key.key = encrypted_key
@@ -106,11 +105,27 @@ def sendAESkey(encrypted_key, socket):
     print("send")
     socket.sendall(long_to_bytes(encrypted_key))
 
-
+def aes_key(key):
+    with open('aes_key.bin', 'r') as f:
+        if not f.read(1):
+            creazione_aes_key(key)
+            esporta_aes_key('aes_key.bin', key)
+        else:
+            esporta_aes_key('aes_key.bin', key)
 #fine parte client
 
 def main():
-    print(hash("Ho dedicato la mia intera vita a essere una password e ora finalmente lo sono."))
-    pass
+    key = Key()
+    aes_key(key)
+
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client.connect(('localhost', 5000))
+
+    print("connesso al server!")
+
+    public_key = ricevere_RSAkey(client)
+    encripted_key = cripta_RSA(public_key, key)
+    sendAESkey(encripted_key, client)
+
 if __name__ == "__main__":
     main()
