@@ -111,7 +111,7 @@ def main():
 
     client.connect(('localhost', 5000))
     print("inizioMandareAES")
-    mandare_AES_key(client)
+    #mandare_AES_key(client)
 
     print("Connesso al server!\n")
     
