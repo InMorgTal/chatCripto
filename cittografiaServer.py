@@ -82,8 +82,7 @@ def decryptMessageRSA(AES_key_encrypted):
     decrypted_int = pow(encrypted_int, d, n)
     key_bytes = long_to_bytes(decrypted_int)
     # La password va richiesta all'utente o gestita in altro modo
-    password = input("Inserisci la password per la chiave AES: ")
-    key = Key.Key.from_bytes(key_bytes, password)
+    key = Key.Key.from_bytes(key_bytes)
     return key
 
 
