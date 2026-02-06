@@ -99,9 +99,9 @@ def main():
     sendAESkey(encripted_key, client)
 
     testo = input("inserire messaggio da inviare: ")
-    encrypted_text, tag = key.criptare(testo)
+    encrypted_text, tag, nonce = key.criptare(testo)
     print("testo criptato:", encrypted_text.hex())
-    client.sendall(tag + encrypted_text)
+    client.sendall(tag + encrypted_text + nonce)
 
     tag = client.recv(16)
     encrypted_response = client.recv(4096)
