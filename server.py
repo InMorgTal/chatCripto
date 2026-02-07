@@ -10,16 +10,7 @@ chat_private = {}    # chiave_chat → lista messaggi
 # Per evitare conflitti tra thread
 lock = threading.Lock()
 
-MAX_MESSAGGI = 1000
-
-
-def chiave_chat_privata(utente1, utente2):
-    """Crea una chiave univoca ordinando i due username"""
-    if utente1 < utente2:
-        return f"{utente1}_{utente2}"
-    else:
-        return f"{utente2}_{utente1}"
-
+MAX_MESSAGGI = 500
 
 def ricevi_messaggio(conn):
     """Riceve un messaggio JSON dal client"""
@@ -36,7 +27,6 @@ def ricevi_messaggio(conn):
     except:
         return None
 
-
 def invia_messaggio(conn, messaggio):
     """Invia un messaggio JSON al client"""
     try:
@@ -45,7 +35,6 @@ def invia_messaggio(conn, messaggio):
         return True
     except:
         return False
-
 
 def gestisci_messaggio_chat(msg):
     """Salva e inoltra un messaggio a gruppo o chat privata"""
@@ -69,7 +58,7 @@ def gestisci_messaggio_chat(msg):
         
         # È una chat privata
         else:
-            chiave = chiave_chat_privata(mittente, destinazione)
+            chiave = tuple(sorted([mittente, destinazione]))
             
             # Crea la chat se non esiste
             if chiave not in chat_private:
@@ -89,7 +78,6 @@ def gestisci_messaggio_chat(msg):
         if utente != mittente and utente in utenti:
             invia_messaggio(utenti[utente], msg)
 
-
 def crea_gruppo(msg):
     """Crea un nuovo gruppo"""
     nome_gruppo = msg["nome"]
@@ -98,7 +86,6 @@ def crea_gruppo(msg):
         if nome_gruppo not in gruppi:
             gruppi[nome_gruppo] = []
             print(f"Gruppo '{nome_gruppo}' creato")
-
 
 def carica_lista_chat(conn, username):
     """Invia al client la lista delle sue chat"""
@@ -117,7 +104,6 @@ def carica_lista_chat(conn, username):
     risposta = {"tipo": "lista_chat", "chat": lista}
     invia_messaggio(conn, risposta)
 
-
 def apri_chat(conn, nome_chat):
     """Invia lo storico di una chat"""
     messaggi = []
@@ -133,27 +119,31 @@ def apri_chat(conn, nome_chat):
     risposta = {"tipo": "storico", "messaggi": messaggi}
     invia_messaggio(conn, risposta)
 
+def crea_chat_privata(conn, msg):
+    """Crea o apre una chat privata"""
+    chiave = msg["chat"]
+    with lock:
+        if chiave not in chat_private:
+            chat_private[chiave] = []
+
+
 
 def gestisci_client(conn, indirizzo):
     """Gestisce la connessione di un client"""
     username = None
     
     try:
-        # 1. LOGIN
-        while True:
-            msg = ricevi_messaggio(conn)
-            if not msg:
-                return
-            
-            username = msg["username"]
+        # 1. USERNAME
+        while True:            
+            username = conn.recv(1024).decode().strip()
             
             with lock:
                 # Username già in uso?
                 if username in utenti:
-                    invia_messaggio(conn, {"tipo": "login", "ok": False})
+                    conn.sendall("False".encode())
                 else:
                     utenti[username] = conn
-                    invia_messaggio(conn, {"tipo": "login", "ok": True})
+                    conn.sendall("True".encode())
                     print(f"{username} connesso da {indirizzo}")
                     break
         
@@ -165,32 +155,27 @@ def gestisci_client(conn, indirizzo):
             
             tipo = msg["tipo"]
             
-            if tipo == "messaggio":
-                gestisci_messaggio_chat(msg)
-            
-            elif tipo == "crea_gruppo":
-                crea_gruppo(msg)
-            
-            elif tipo == "carica_chat":
-                carica_lista_chat(conn, username)
-            
-            elif tipo == "apri_chat":
-                apri_chat(conn, msg["chat"])
+            match tipo:
+                case "messaggio":
+                    gestisci_messaggio_chat(msg)
+                case "crea_gruppo":
+                    crea_gruppo(msg)
+                case "crea_chat":
+                    crea_chat_privata(conn, msg)
+                case "carica_chat":
+                    carica_lista_chat(conn, username)
+                case "apri_chat":
+                    apri_chat(conn, msg["chat"])
     
     except Exception as e:
         print(f"Errore con {username}: {e}")
-    
-    finally:
-        # Disconnessione
-        if username:
-            with lock:
-                if username in utenti:
-                    del utenti[username]
+        with lock:
+            if username in utenti:
+                del utenti[username]
             print(f"{username} disconnesso")
         
         conn.close()
-
-
+    
 def avvia_server():
     """Avvia il server"""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -202,9 +187,7 @@ def avvia_server():
     try:
         while True:
             conn, indirizzo = server.accept()
-            # Crea un thread per ogni client
             thread = threading.Thread(target=gestisci_client, args=(conn, indirizzo))
-            thread.daemon = True
             thread.start()
     
     except KeyboardInterrupt:
