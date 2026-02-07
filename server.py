@@ -1,184 +1,176 @@
 import socket
 import threading
-from Crypto.PublicKey import RSA
-from Crypto.Cipher import AES
 import json
 
+# Dizionari principali
+utenti = {}          # username → connessione
+gruppi = {}          # nome_gruppo → {membri:[], messaggi:[]}
+chatPrivate = {}     # (utente1,utente2) → {membri:[], messaggi:[]}
 
-sServer = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
-sServer.bind(('localhost', 5000))
+# -------------------------
+# Funzioni utili
+# -------------------------
 
-sServer.listen(20)
-
-gruppi={} 
-
-chatPrivate={}
-
-utenti = {}
+def creaChiaveChatPrivata(a, b):
+    """Restituisce una tupla ordinata per identificare una chat privata."""
+    return tuple(sorted([a, b]))
 
 
 def riceviMsg(conn):
-    global utenti
+    """Riceve un messaggio JSON terminato da newline."""
     buffer = ""
-
     while True:
         data = conn.recv(2048).decode()
         if not data:
-            break  # connessione chiusa
-
+            return None
         buffer += data
-
         while "\n" in buffer:
             msg_str, buffer = buffer.split("\n", 1)
-            pacchetto = json.loads(msg_str)  # pacchetto con iv, cPad, msgCifrato
+            try:
+                return json.loads(msg_str)
+            except:
+                continue
 
-            # Decifriamo il messaggio
-            ##iv = pacchetto["iv"]
-            ##cPad = pacchetto["cPad"]
-            ##msgCifrato = pacchetto["msgCifrato"]
 
-            # Decifra la parte cifrata (devi avere la funzione decifra)
-            ##msg_decriptato_bytes = decifrare(utenti[conn][1], iv, cPad, msgCifrato)
-            ##msg_decriptato_str = msg_decriptato_bytes.decode()  # da bytes a stringa
-            ##msg = json.loads(msg_decriptato_str)  # messaggio originale JSON
+def inviaMsg(conn, msg):
+    """Invia un messaggio JSON con newline finale."""
+    conn.sendall((json.dumps(msg) + "\n").encode())
 
-            return msg
 
-def inviaMsg(conn,msg):
-    global utenti
-    msg=(json.dumps(msg)+ "\n").encode()
-    ##iv, cPad, msgCifrato = cifrare(utenti[conn][1], msg)
-
-    # Mettiamo tutto in un dizionario
-    ##pacchetto = {
-    ##    "iv": iv,
-    ##    "cPad": cPad,
-    ##    "msgCifrato": msgCifrato
-    ##}
-
-    ##dati_da_inviare = json.dumps(pacchetto) + "\n"
-##########################################################################################
-    conn.sendall(dati_da_inviare.encode())
-
-def creaChiaveChatPrivata(utente1,utente2):       
-    nomi=[utente1,utente2]                                      #mi serve una chiave per il dizionario delle chat private e quindi uso i due username ordinati
-    return tuple(sorted(nomi))                                              #in modo da essere semre nello stesso ordine dato che potrebbero essere sia in sorgente che destinazione
+# -------------------------
+# Gestione messaggi
+# -------------------------
 
 def messaggio(msg):
-    if msg["destinazione"] in gruppi:                                                   #invio messaggio gruppo
-        gruppi[msg["destinazione"]]["messaggi"].append(msg)
-        for username in gruppi["membri"]:
-            if username != msg["sorgente"]:
-                inviaMsg(utenti[username],msg)
-    else:
-        chiavePrivata=creaChiaveChatPrivata(msg["sorgente"],msg["destinazione"])        #invio messaggio privata
-        chatPrivate[chiavePrivata]["messaggi"].append(msg)
-        for username in chatPrivate[chiavePrivata]["membri"]:
-            if username != msg["sorgente"]:
-                inviaMsg(utenti[username],msg)
+    sorg = msg["sorgente"]
+    dest = msg["destinazione"]
+
+    # Caso GRUPPO
+    if isinstance(dest, str) and dest in gruppi:
+        gruppi[dest]["messaggi"].append(msg)
+        for u in gruppi[dest]["membri"]:
+            if u != sorg and u in utenti:
+                inviaMsg(utenti[u], msg)
+        return
+
+    # Caso PRIVATO
+    if isinstance(dest, str):
+        dest = eval(dest)  # converte "('a','b')" → ('a','b')
+
+    key = creaChiaveChatPrivata(dest[0], dest[1])
+
+    if key not in chatPrivate:
+        chatPrivate[key] = {"membri": list(key), "messaggi": []}
+
+    chatPrivate[key]["messaggi"].append(msg)
+
+    for u in key:
+        if u != sorg and u in utenti:
+            inviaMsg(utenti[u], msg)
+
 
 def creaGruppo(msg):
-    if msg["destinazione"] not in gruppi:                                               #creo gruppo
-        gruppi[msg["destinazione"]]={
-        "membri":[msg["membri"]],
-        "messaggi":[]
-    }
-    
-def iniziaConversazione(msg):                                                           #creo chat privata
-    chiaveChat=creaChiaveChatPrivata(msg["membri"][0],msg["membri"][1])
-    chatPrivate [chiaveChat]={
-        "membri":[msg["membri"][0],msg["membri"][1]],
-        "messaggi":[]
-    }
-
-def caricaChat(conn,msg):
-    username_cercato = msg["sorgente"]
-    chat=[]
-    for gruppo, info in gruppi.items():
-        if username_cercato in info["membri"]:
-            chat.append(gruppo)
-    for private, info in chatPrivate.items():
-        if username_cercato in info["membri"]:
-            chat.append(private)
-
-    msg={
-        "tipo":"caricaChat",
-        "destinazione":username_cercato,
-        "chat":chat
-    }
-    inviaMsg(conn,msg)
-
-'''
+    nome = msg["destinazione"]
+    if nome not in gruppi:
+        gruppi[nome] = {
+            "membri": msg["membri"],
+            "messaggi": []
+        }
 
 
+def iniziaConversazione(msg):
+    a, b = msg["membri"]
+    key = creaChiaveChatPrivata(a, b)
+    if key not in chatPrivate:
+        chatPrivate[key] = {
+            "membri": [a, b],
+            "messaggi": []
+        }
 
-    for gruppo, info in gruppi.items():
-        if username_cercato in info["membri"]:
-            print(f"{username_cercato} è presente in {gruppo}")
-            inviaMsg(utenti[username_cercato],info["messaggi"][-20:])
-        
-    for chat, info in chatPrivate.items():
-        if username_cercato in info["membri"]:
-            print(f"{username_cercato} è presente nella chat privata {chat}")
-            inviaMsg(utenti[username_cercato],info["messaggi"][-20:])
-'''
-def inviaMsg(conn,msg):
 
-    conn.sendall((json.dumps(msg)+ "\n").encode())  
+def caricaChat(conn, msg):
+    user = msg["sorgente"]
+    lista = []
 
-def riceviMsg(conn):
+    # gruppi
+    for nome, info in gruppi.items():
+        if user in info["membri"]:
+            lista.append(nome)
 
-    buffer = ""
+    # chat private
+    for key, info in chatPrivate.items():
+        if user in info["membri"]:
+            lista.append(str(key))
 
-    while True:
-        data = conn.recv(2048).decode()
-        if not data:
-            break
+    inviaMsg(conn, {"tipo": "caricaChat", "chat": lista})
 
-        buffer += data
 
-        while "\n" in buffer:
-            msg_str, buffer = buffer.split("\n", 1)
-            msg = json.loads(msg_str)
-        return msg
+def apriChat(conn, msg):
+    nome = msg["chat"]
+
+    # privata
+    if nome.startswith("("):
+        key = eval(nome)
+        mess = chatPrivate[key]["messaggi"]
+    else:
+        mess = gruppi[nome]["messaggi"]
+
+    inviaMsg(conn, {"tipo": "chatAperta", "messaggi": mess})
+
+
+# -------------------------
+# Gestione client
+# -------------------------
 
 def gestisciClient(conn):
-    # decrypted_message = handleRSAKey(conn)
-
+    # Primo messaggio: username
     while True:
-        username = riceviMsg(conn)
-       # save_aes_key(username, decrypted_message)
+        msg = riceviMsg(conn)
+        if msg is None:
+            return
+        username = msg["username"]
         if username not in utenti:
             break
-        inviaMsg(conn,{"testo":"Username occupato scegline un altro"})
+        inviaMsg(conn, {"testo": "Username occupato"})
 
-    print((f"aggiunto utente: {username}"))
-    
-    utenti[username] = [conn]
+    utenti[username] = conn
 
+    # Loop principale
     while True:
+        msg = riceviMsg(conn)
+        if msg is None:
+            del utenti[username]
+            return
 
-        msg=riceviMsg(conn)
-        
-        print("Messaggio ricevuto:", msg)
+        tipo = msg["tipo"]
 
-        tipoMsg = msg["tipo"]
+        if tipo == "messaggio":
+            messaggio(msg)
+        elif tipo == "creaGruppo":
+            creaGruppo(msg)
+        elif tipo == "iniziaConv":
+            iniziaConversazione(msg)
+        elif tipo == "caricaChat":
+            caricaChat(conn, msg)
+        elif tipo == "apriChat":
+            apriChat(conn, msg)
 
-        match tipoMsg:
-            case "messaggio": messaggio(msg),
-            case "creaGruppo": creaGruppo(msg),
-            case "iniziaConv":iniziaConversazione(msg),
-            case "caricaChat": caricaChat(conn,msg)
 
+# -------------------------
+# MAIN SERVER
+# -------------------------
 
 def main():
-    #generationRSAkeys()
-    print("Server attivo e in ascolto...")
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.bind(('localhost', 5000))
+    server.listen(20)
+
+    print("Server attivo su porta 5000...")
 
     while True:
-        conn, addr = sServer.accept()
-        threading.Thread(target=gestisciClient, args=(conn,)).start()
+        conn, addr = server.accept()
+        threading.Thread(target=gestisciClient, args=(conn,), daemon=True).start()
 
 
 if __name__ == "__main__":

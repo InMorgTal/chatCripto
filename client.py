@@ -1,132 +1,201 @@
-# Importa le librerie necessarie per la comunicazione via socket e il multithreading
 import socket
 import threading
-import os
 import json
+import time
+import os
 
-#globali
-my_iv = ""
-chatPrivate={}
+username = ""
+chat_list = []
+chat_storico = []
 
-gruppo={}
 
-username= ""
+def clear():
+    os.system("cls" if os.name == "nt" else "clear")
+
 
 def riceviMsg(conn):
+    global chat_list, chat_storico
     buffer = ""
 
     while True:
-        data = conn.recv(2048).decode()
+        try:
+            data = conn.recv(2048).decode()
+        except:
+            break
+
         if not data:
-            break  # connessione chiusa
+            break
 
         buffer += data
 
         while "\n" in buffer:
             msg_str, buffer = buffer.split("\n", 1)
-            #pacchetto = json.loads(msg_str)  # pacchetto con iv, cPad, msgCifrato
+            msg = json.loads(msg_str)
 
-            # Decifriamo il messaggio
-            #iv = pacchetto["iv"]
-            #cPad = pacchetto["cPad"]
-            #msgCifrato = pacchetto["msgCifrato"]
+            if msg["tipo"] == "caricaChat":
+                chat_list = msg["chat"]
 
-            # Decifra la parte cifrata (devi avere la funzione decifra)
-            #msg_decriptato_bytes = decifrare(load_aes_key('aes_key.bin'), iv, cPad, msgCifrato)
-            #msg_decriptato_str = msg_decriptato_bytes.decode()  # da bytes a stringa
-            msg = json.loads(msg_str)  # messaggio originale JSON
+            elif msg["tipo"] == "chatAperta":
+                chat_storico = msg["messaggi"]
 
-    match msg["tipo"]:
-        case "caricaChat":
-            for nomechat in msg["chat"]:
-                print(nomechat)
+            elif msg["tipo"] == "messaggio":
+                pass
 
-def caricaChat(conn):
-    global username
-    msg={
-    "tipo": "caricaChat",
-    "sorgente":username,
-    }
-    inviaMsg(conn,msg)
-  
-def inviaMsg(conn,msg):
-    #aes_key = load_aes_key()
-    msg = (json.dumps(msg)+ "\n").encode()
-    #iv, cPad, msgCifrato = cifrare(aes_key, msg)
 
-# Mettiamo tutto in un dizionario
-    #pacchetto = {
-    #    "iv": iv,
-    #    "cPad": cPad,
-    #    "msgCifrato": msgCifrato
-    #}
+def inviaMsg(conn, msg):
+    conn.sendall((json.dumps(msg) + "\n").encode())
 
-    #dati_da_inviare = json.dumps(pacchetto) + "\n"
-    conn.sendall(msg.encode())
 
-def menu(conn):
-    global username
+# -------------------------
+# MENU PRINCIPALE
+# -------------------------
+
+def menu_principale(conn):
     while True:
-        print("\n--- MENU ---")
-        print("[1] Mostra lista chat")
-        print("[2] Inizia conversazione privata")
-        print("[3] Crea un gruppo")
-        print("[4] Esci")
+        clear()
+        print("--- MENU PRINCIPALE ---")
+        print("1) Vedi chat")
+        print("2) Nuova chat privata")
+        print("3) Crea gruppo")
+        print("4) Esci")
 
-        scelta = input("Scegli un’opzione: ")
+        scelta = input("Scelta: ")
 
-        match int(scelta):
-            case 1:
-                os.system('cls')
-                caricaChat(conn)
+        if scelta == "1":
+            menu_vedi_chat(conn)
+        elif scelta == "2":
+            nuova_chat_privata(conn)
+        elif scelta == "3":
+            crea_gruppo(conn)
+        elif scelta == "4":
+            print("Uscita...")
+            conn.close()
+            return
 
-            case 2:
-                membri=[]
-                while True:
-                    user=input("Con chi vuoi parlare?\n")
-                    if user != username:
-                        break
-                    print("Non puoi parlare con te stesso!")
-                
-                membri.append(username)
-                membri.append(user)
-                inviaMsg(conn,{"tipo":"iniziaConv","membri":membri})
-            case 3:
-                membri=[]
-                while True:
-                    
-                    user=input("Inserisci partecipanti (0 per terminare selezione)")
-                    if user != "0":
-                        membri.append(user)
-                    else:
-                        break
-                    
-                membri.append(username)
-                inviaMsg(conn,{"tipo":"creaGruppo","membri":membri})
+
+# -------------------------
+# MENU 2: VEDI CHAT
+# -------------------------
+
+def menu_vedi_chat(conn):
+    global chat_list
+
+    inviaMsg(conn, {"tipo": "caricaChat", "sorgente": username})
+    time.sleep(0.2)
+
+    while True:
+        clear()
+        print("--- LE TUE CHAT ---")
+
+        for i, c in enumerate(chat_list):
+            print(f"{i+1}) {c}")
+
+        print("0) Torna indietro")
+
+        scelta = input("Scelta: ")
+
+        if scelta == "0":
+            return
+
+        try:
+            scelta = int(scelta)
+            if 1 <= scelta <= len(chat_list):
+                apri_chat(conn, chat_list[scelta-1])
+        except:
+            pass
+
+
+# -------------------------
+# CHAT
+# -------------------------
+
+def apri_chat(conn, nome_chat):
+    global chat_storico
+
+    destinazione = eval(nome_chat) if nome_chat.startswith("(") else nome_chat
+
+    while True:
+        # Richiede lo storico aggiornato
+        inviaMsg(conn, {"tipo": "apriChat", "chat": nome_chat})
+        time.sleep(0.2)
+
+        # Ristampa la chat
+        clear()
+        print(f"--- CHAT {nome_chat} ---")
+        for m in chat_storico:
+            print(f"{m['sorgente']}: {m.get('testo','')}")
+        print("------------------")
+
+        testo = input("Scrivi messaggio (0 per uscire): ")
+        if testo == "0":
+            return
+
+        inviaMsg(conn, {
+            "tipo": "messaggio",
+            "sorgente": username,
+            "destinazione": destinazione,
+            "testo": testo
+        })
+
+
+# -------------------------
+# CREAZIONE CHAT E GRUPPI
+# -------------------------
+
+def nuova_chat_privata(conn):
+    global username
+
+    while True:
+        user = input("Con chi vuoi parlare? ")
+        if user != username:
+            break
+        print("Non puoi parlare con te stesso!")
+
+    inviaMsg(conn, {"tipo": "iniziaConv", "membri": [username, user]})
+    time.sleep(0.2)
+
+
+def crea_gruppo(conn):
+    membri = []
+
+    while True:
+        user = input("Aggiungi partecipante (0 per finire): ")
+        if user == "0":
+            break
+        if user not in membri:
+            membri.append(user)
+
+    membri.append(username)
+    nome = input("Nome del gruppo: ")
+
+    inviaMsg(conn, {"tipo": "creaGruppo", "membri": membri, "destinazione": nome})
+    time.sleep(0.2)
+
+
+# -------------------------
+# MAIN CLIENT
+# -------------------------
 
 def main():
     global username
-    print("main attivato")
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
+    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(('localhost', 5000))
-    print("inizioMandareAES")
-    #mandare_AES_key(client)
 
     print("Connesso al server!\n")
-    
+
     while True:
-        username = input("Inserisci username\n")
-        if len(username)>3:
+        username = input("Inserisci username: ")
+        if len(username) > 3:
             break
         print("Troppo corto")
 
-    msg = {"username":username}
-    inviaMsg(client,msg)
+    inviaMsg(client, {"username": username})
 
-    t = threading.Thread(target=riceviMsg, args=(client,))
-    t.start()
-    menu(client)
-    
+    threading.Thread(target=riceviMsg, args=(client,), daemon=True).start()
+
+    menu_principale(client)
+
+
 if __name__ == "__main__":
     main()
