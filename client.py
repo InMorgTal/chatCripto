@@ -80,7 +80,7 @@ def menu_vedi_chat(conn):
     time.sleep(0.2)
 
     while True:
-        clear()
+        os.system("cls")
         print("--- LE TUE CHAT ---")
 
         for i, c in enumerate(chat_list):
@@ -116,7 +116,7 @@ def apri_chat(conn, nome_chat):
         time.sleep(0.2)
 
         # Ristampa la chat
-        clear()
+        os.system("cls")
         print(f"--- CHAT {nome_chat} ---")
         for m in chat_storico:
             print(f"{m['sorgente']}: {m.get('testo','')}")
