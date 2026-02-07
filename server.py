@@ -2,176 +2,215 @@ import socket
 import threading
 import json
 
-# Dizionari principali
-utenti = {}          # username → connessione
-gruppi = {}          # nome_gruppo → {membri:[], messaggi:[]}
-chatPrivate = {}     # (utente1,utente2) → {membri:[], messaggi:[]}
+# Dizionari per memorizzare i dati
+utenti = {}          # username → connessione socket
+gruppi = {}          # nome_gruppo → lista messaggi
+chat_private = {}    # chiave_chat → lista messaggi
+
+# Per evitare conflitti tra thread
+lock = threading.Lock()
+
+MAX_MESSAGGI = 1000
 
 
-# -------------------------
-# Funzioni utili
-# -------------------------
-
-def creaChiaveChatPrivata(a, b):
-    """Restituisce una tupla ordinata per identificare una chat privata."""
-    return tuple(sorted([a, b]))
-
-
-def riceviMsg(conn):
-    """Riceve un messaggio JSON terminato da newline."""
-    buffer = ""
-    while True:
-        data = conn.recv(2048).decode()
-        if not data:
-            return None
-        buffer += data
-        while "\n" in buffer:
-            msg_str, buffer = buffer.split("\n", 1)
-            try:
-                return json.loads(msg_str)
-            except:
-                continue
-
-
-def inviaMsg(conn, msg):
-    """Invia un messaggio JSON con newline finale."""
-    conn.sendall((json.dumps(msg) + "\n").encode())
-
-
-# -------------------------
-# Gestione messaggi
-# -------------------------
-
-def messaggio(msg):
-    sorg = msg["sorgente"]
-    dest = msg["destinazione"]
-
-    # Caso GRUPPO
-    if isinstance(dest, str) and dest in gruppi:
-        gruppi[dest]["messaggi"].append(msg)
-        for u in gruppi[dest]["membri"]:
-            if u != sorg and u in utenti:
-                inviaMsg(utenti[u], msg)
-        return
-
-    # Caso PRIVATO
-    if isinstance(dest, str):
-        dest = eval(dest)  # converte "('a','b')" → ('a','b')
-
-    key = creaChiaveChatPrivata(dest[0], dest[1])
-
-    if key not in chatPrivate:
-        chatPrivate[key] = {"membri": list(key), "messaggi": []}
-
-    chatPrivate[key]["messaggi"].append(msg)
-
-    for u in key:
-        if u != sorg and u in utenti:
-            inviaMsg(utenti[u], msg)
-
-
-def creaGruppo(msg):
-    nome = msg["destinazione"]
-    if nome not in gruppi:
-        gruppi[nome] = {
-            "membri": msg["membri"],
-            "messaggi": []
-        }
-
-
-def iniziaConversazione(msg):
-    a, b = msg["membri"]
-    key = creaChiaveChatPrivata(a, b)
-    if key not in chatPrivate:
-        chatPrivate[key] = {
-            "membri": [a, b],
-            "messaggi": []
-        }
-
-
-def caricaChat(conn, msg):
-    user = msg["sorgente"]
-    lista = []
-
-    # gruppi
-    for nome, info in gruppi.items():
-        if user in info["membri"]:
-            lista.append(nome)
-
-    # chat private
-    for key, info in chatPrivate.items():
-        if user in info["membri"]:
-            lista.append(str(key))
-
-    inviaMsg(conn, {"tipo": "caricaChat", "chat": lista})
-
-
-def apriChat(conn, msg):
-    nome = msg["chat"]
-
-    # privata
-    if nome.startswith("("):
-        key = eval(nome)
-        mess = chatPrivate[key]["messaggi"]
+def chiave_chat_privata(utente1, utente2):
+    """Crea una chiave univoca ordinando i due username"""
+    if utente1 < utente2:
+        return f"{utente1}_{utente2}"
     else:
-        mess = gruppi[nome]["messaggi"]
-
-    inviaMsg(conn, {"tipo": "chatAperta", "messaggi": mess})
+        return f"{utente2}_{utente1}"
 
 
-# -------------------------
-# Gestione client
-# -------------------------
-
-def gestisciClient(conn):
-    # Primo messaggio: username
-    while True:
-        msg = riceviMsg(conn)
-        if msg is None:
-            return
-        username = msg["username"]
-        if username not in utenti:
-            break
-        inviaMsg(conn, {"testo": "Username occupato"})
-
-    utenti[username] = conn
-
-    # Loop principale
-    while True:
-        msg = riceviMsg(conn)
-        if msg is None:
-            del utenti[username]
-            return
-
-        tipo = msg["tipo"]
-
-        if tipo == "messaggio":
-            messaggio(msg)
-        elif tipo == "creaGruppo":
-            creaGruppo(msg)
-        elif tipo == "iniziaConv":
-            iniziaConversazione(msg)
-        elif tipo == "caricaChat":
-            caricaChat(conn, msg)
-        elif tipo == "apriChat":
-            apriChat(conn, msg)
+def ricevi_messaggio(conn):
+    """Riceve un messaggio JSON dal client"""
+    dati = conn.recv(2048).decode()
+    if not dati:
+        return None
+    
+    # Prende solo il primo messaggio (fino al newline)
+    if "\n" in dati:
+        dati = dati.split("\n")[0]
+    
+    try:
+        return json.loads(dati)
+    except:
+        return None
 
 
-# -------------------------
-# MAIN SERVER
-# -------------------------
+def invia_messaggio(conn, messaggio):
+    """Invia un messaggio JSON al client"""
+    try:
+        testo = json.dumps(messaggio) + "\n"
+        conn.sendall(testo.encode())
+        return True
+    except:
+        return False
 
-def main():
+
+def gestisci_messaggio_chat(msg):
+    """Salva e inoltra un messaggio a gruppo o chat privata"""
+    mittente = msg["sorgente"]
+    destinazione = msg["destinazione"]
+    
+    with lock:
+        # È un gruppo?
+        if destinazione in gruppi:
+            # Aggiungi messaggio al gruppo
+            gruppi[destinazione].append(msg)
+            
+            # Tieni solo gli ultimi MAX_MESSAGGI
+            if len(gruppi[destinazione]) > MAX_MESSAGGI:
+                gruppi[destinazione] = gruppi[destinazione][-MAX_MESSAGGI:]
+            
+            # Trova membri del gruppo dal primo messaggio
+            membri = []
+            for u in utenti.keys():
+                membri.append(u)  # Semplificato: inoltra a tutti
+        
+        # È una chat privata
+        else:
+            chiave = chiave_chat_privata(mittente, destinazione)
+            
+            # Crea la chat se non esiste
+            if chiave not in chat_private:
+                chat_private[chiave] = []
+            
+            # Aggiungi messaggio
+            chat_private[chiave].append(msg)
+            
+            # Tieni solo gli ultimi MAX_MESSAGGI
+            if len(chat_private[chiave]) > MAX_MESSAGGI:
+                chat_private[chiave] = chat_private[chiave][-MAX_MESSAGGI:]
+            
+            membri = [mittente, destinazione]
+    
+    # Inoltra il messaggio ai membri (escluso mittente)
+    for utente in membri:
+        if utente != mittente and utente in utenti:
+            invia_messaggio(utenti[utente], msg)
+
+
+def crea_gruppo(msg):
+    """Crea un nuovo gruppo"""
+    nome_gruppo = msg["nome"]
+    
+    with lock:
+        if nome_gruppo not in gruppi:
+            gruppi[nome_gruppo] = []
+            print(f"Gruppo '{nome_gruppo}' creato")
+
+
+def carica_lista_chat(conn, username):
+    """Invia al client la lista delle sue chat"""
+    lista = []
+    
+    with lock:
+        # Aggiungi tutti i gruppi
+        for nome_gruppo in gruppi.keys():
+            lista.append(nome_gruppo)
+        
+        # Aggiungi chat private dell'utente
+        for chiave in chat_private.keys():
+            if username in chiave:
+                lista.append(chiave)
+    
+    risposta = {"tipo": "lista_chat", "chat": lista}
+    invia_messaggio(conn, risposta)
+
+
+def apri_chat(conn, nome_chat):
+    """Invia lo storico di una chat"""
+    messaggi = []
+    
+    with lock:
+        # Gruppo
+        if nome_chat in gruppi:
+            messaggi = gruppi[nome_chat].copy()
+        # Chat privata
+        elif nome_chat in chat_private:
+            messaggi = chat_private[nome_chat].copy()
+    
+    risposta = {"tipo": "storico", "messaggi": messaggi}
+    invia_messaggio(conn, risposta)
+
+
+def gestisci_client(conn, indirizzo):
+    """Gestisce la connessione di un client"""
+    username = None
+    
+    try:
+        # 1. LOGIN
+        while True:
+            msg = ricevi_messaggio(conn)
+            if not msg:
+                return
+            
+            username = msg["username"]
+            
+            with lock:
+                # Username già in uso?
+                if username in utenti:
+                    invia_messaggio(conn, {"tipo": "login", "ok": False})
+                else:
+                    utenti[username] = conn
+                    invia_messaggio(conn, {"tipo": "login", "ok": True})
+                    print(f"{username} connesso da {indirizzo}")
+                    break
+        
+        # 2. LOOP PRINCIPALE
+        while True:
+            msg = ricevi_messaggio(conn)
+            if not msg:
+                break
+            
+            tipo = msg["tipo"]
+            
+            if tipo == "messaggio":
+                gestisci_messaggio_chat(msg)
+            
+            elif tipo == "crea_gruppo":
+                crea_gruppo(msg)
+            
+            elif tipo == "carica_chat":
+                carica_lista_chat(conn, username)
+            
+            elif tipo == "apri_chat":
+                apri_chat(conn, msg["chat"])
+    
+    except Exception as e:
+        print(f"Errore con {username}: {e}")
+    
+    finally:
+        # Disconnessione
+        if username:
+            with lock:
+                if username in utenti:
+                    del utenti[username]
+            print(f"{username} disconnesso")
+        
+        conn.close()
+
+
+def avvia_server():
+    """Avvia il server"""
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('localhost', 5000))
-    server.listen(20)
-
-    print("Server attivo su porta 5000...")
-
-    while True:
-        conn, addr = server.accept()
-        threading.Thread(target=gestisciClient, args=(conn,), daemon=True).start()
+    server.listen(10)
+    
+    print("Server avviato sulla porta 5000")
+    
+    try:
+        while True:
+            conn, indirizzo = server.accept()
+            # Crea un thread per ogni client
+            thread = threading.Thread(target=gestisci_client, args=(conn, indirizzo))
+            thread.daemon = True
+            thread.start()
+    
+    except KeyboardInterrupt:
+        print("\nServer in chiusura...")
+        server.close()
 
 
 if __name__ == "__main__":
-    main()
+    avvia_server()

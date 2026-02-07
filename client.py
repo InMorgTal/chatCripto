@@ -2,200 +2,259 @@ import socket
 import threading
 import json
 import time
-import os
 
+# Variabili globali
 username = ""
-chat_list = []
-chat_storico = []
+lista_chat = []
+storico_chat = {}
+chat_corrente = None
+login_ok = False
+risposta_login = threading.Event()
 
 
-def clear():
-    os.system("cls" if os.name == "nt" else "clear")
-
-
-def riceviMsg(conn):
-    global chat_list, chat_storico
-    buffer = ""
-
+def ricevi_messaggi(conn):
+    """Thread che riceve messaggi dal server"""
+    global lista_chat, storico_chat, login_ok
+    
     while True:
         try:
-            data = conn.recv(2048).decode()
+            dati = conn.recv(2048).decode()
         except:
+            print("\nConnessione persa")
             break
-
-        if not data:
+        
+        if not dati:
+            print("\nServer disconnesso")
             break
+        
+        # Prende solo il primo messaggio
+        if "\n" in dati:
+            dati = dati.split("\n")[0]
+        
+        try:
+            msg = json.loads(dati)
+        except:
+            continue
+        
+        tipo = msg.get("tipo")
+        
+        # Risposta login
+        if tipo == "login":
+            login_ok = msg["ok"]
+            risposta_login.set()
+        
+        # Lista chat
+        elif tipo == "lista_chat":
+            lista_chat = msg["chat"]
+        
+        # Storico chat
+        elif tipo == "storico":
+            if chat_corrente:
+                storico_chat[chat_corrente] = msg["messaggi"]
+        
+        # Nuovo messaggio
+        elif tipo == "messaggio":
+            dest = msg["destinazione"]
+            mitt = msg["sorgente"]
+            
+            # Trova la chiave della chat
+            if dest in lista_chat:  # Gruppo
+                chiave = dest
+            else:  # Chat privata
+                if mitt < username:
+                    chiave = f"{mitt}_{username}"
+                else:
+                    chiave = f"{username}_{mitt}"
+            
+            # Salva messaggio
+            if chiave not in storico_chat:
+                storico_chat[chiave] = []
+            storico_chat[chiave].append(msg)
+            
+            # Stampa se siamo in quella chat
+            if chat_corrente == chiave:
+                print(f"{mitt}: {msg['testo']}")
 
-        buffer += data
 
-        while "\n" in buffer:
-            msg_str, buffer = buffer.split("\n", 1)
-            msg = json.loads(msg_str)
+def invia_messaggio(conn, msg):
+    """Invia un messaggio al server"""
+    try:
+        testo = json.dumps(msg) + "\n"
+        conn.sendall(testo.encode())
+        return True
+    except:
+        return False
 
-            if msg["tipo"] == "caricaChat":
-                chat_list = msg["chat"]
-
-            elif msg["tipo"] == "chatAperta":
-                chat_storico = msg["messaggi"]
-
-            elif msg["tipo"] == "messaggio":
-                pass
-
-
-def inviaMsg(conn, msg):
-    conn.sendall((json.dumps(msg) + "\n").encode())
-
-
-# -------------------------
-# MENU PRINCIPALE
-# -------------------------
 
 def menu_principale(conn):
+    """Menu principale"""
     while True:
-        clear()
-        print("--- MENU PRINCIPALE ---")
-        print("1) Vedi chat")
+        print("\n=== MENU ===")
+        print("1) Le mie chat")
         print("2) Nuova chat privata")
         print("3) Crea gruppo")
         print("4) Esci")
-
+        
         scelta = input("Scelta: ")
-
+        
         if scelta == "1":
-            menu_vedi_chat(conn)
+            mostra_chat(conn)
         elif scelta == "2":
             nuova_chat_privata(conn)
         elif scelta == "3":
-            crea_gruppo(conn)
+            nuovo_gruppo(conn)
         elif scelta == "4":
-            print("Uscita...")
             conn.close()
-            return
+            break
 
 
-# -------------------------
-# MENU 2: VEDI CHAT
-# -------------------------
-
-def menu_vedi_chat(conn):
-    global chat_list
-
-    inviaMsg(conn, {"tipo": "caricaChat", "sorgente": username})
-    time.sleep(0.2)
-
+def mostra_chat(conn):
+    """Mostra la lista delle chat"""
+    global lista_chat
+    
+    # Richiedi lista aggiornata
+    invia_messaggio(conn, {"tipo": "carica_chat"})
+    time.sleep(0.3)
+    
     while True:
-        clear()
-        print("--- LE TUE CHAT ---")
-
-        for i, c in enumerate(chat_list):
-            print(f"{i+1}) {c}")
-
-        print("0) Torna indietro")
-
+        print("\n=== LE TUE CHAT ===")
+        
+        for i, chat in enumerate(lista_chat):
+            print(f"{i+1}) {chat}")
+        
+        print("0) Indietro")
+        
         scelta = input("Scelta: ")
-
+        
         if scelta == "0":
             return
-
+        
         try:
-            scelta = int(scelta)
-            if 1 <= scelta <= len(chat_list):
-                apri_chat(conn, chat_list[scelta-1])
+            indice = int(scelta) - 1
+            if 0 <= indice < len(lista_chat):
+                apri_chat(conn, lista_chat[indice])
         except:
-            pass
+            print("Scelta non valida")
 
-
-# -------------------------
-# CHAT
-# -------------------------
 
 def apri_chat(conn, nome_chat):
-    global chat_storico
-
-    destinazione = eval(nome_chat) if nome_chat.startswith("(") else nome_chat
-
+    """Apre una chat e permette di chattare"""
+    global chat_corrente, storico_chat
+    
+    chat_corrente = nome_chat
+    
+    # Richiedi storico
+    invia_messaggio(conn, {"tipo": "apri_chat", "chat": nome_chat})
+    time.sleep(0.3)
+    
+    # Stampa storico
+    print(f"\n=== CHAT: {nome_chat} ===")
+    print("(scrivi 'esci' per uscire)\n")
+    
+    if nome_chat in storico_chat:
+        for msg in storico_chat[nome_chat]:
+            mitt = msg["sorgente"]
+            testo = msg["testo"]
+            
+            if mitt == username:
+                print(f"Tu: {testo}")
+            else:
+                print(f"{mitt}: {testo}")
+    
+    # Loop messaggi
     while True:
-        # Richiede lo storico aggiornato
-        inviaMsg(conn, {"tipo": "apriChat", "chat": nome_chat})
-        time.sleep(0.2)
-
-        # Ristampa la chat
-        clear()
-        print(f"--- CHAT {nome_chat} ---")
-        for m in chat_storico:
-            print(f"{m['sorgente']}: {m.get('testo','')}")
-        print("------------------")
-
-        testo = input("Scrivi messaggio (0 per uscire): ")
-        if testo == "0":
+        testo = input("")
+        
+        if testo.lower() == "esci":
+            chat_corrente = None
             return
-
-        inviaMsg(conn, {
+        
+        if not testo.strip():
+            continue
+        
+        # Invia messaggio
+        msg = {
             "tipo": "messaggio",
             "sorgente": username,
-            "destinazione": destinazione,
+            "destinazione": nome_chat,
             "testo": testo
-        })
+        }
+        invia_messaggio(conn, msg)
+        
+        # Salva localmente
+        if nome_chat not in storico_chat:
+            storico_chat[nome_chat] = []
+        storico_chat[nome_chat].append(msg)
 
-
-# -------------------------
-# CREAZIONE CHAT E GRUPPI
-# -------------------------
 
 def nuova_chat_privata(conn):
-    global username
+    """Crea una nuova chat privata"""
+    destinatario = input("Con chi vuoi chattare? ")
+    
+    # Crea chiave chat
+    if username < destinatario:
+        chiave = f"{username}_{destinatario}"
+    else:
+        chiave = f"{destinatario}_{username}"
+    
+    # Aggiungi alle chat se non esiste
+    if chiave not in lista_chat:
+        lista_chat.append(chiave)
+    
+    apri_chat(conn, chiave)
 
-    while True:
-        user = input("Con chi vuoi parlare? ")
-        if user != username:
-            break
-        print("Non puoi parlare con te stesso!")
 
-    inviaMsg(conn, {"tipo": "iniziaConv", "membri": [username, user]})
-    time.sleep(0.2)
-
-
-def crea_gruppo(conn):
-    membri = []
-
-    while True:
-        user = input("Aggiungi partecipante (0 per finire): ")
-        if user == "0":
-            break
-        if user not in membri:
-            membri.append(user)
-
-    membri.append(username)
+def nuovo_gruppo(conn):
+    """Crea un nuovo gruppo"""
     nome = input("Nome del gruppo: ")
+    
+    invia_messaggio(conn, {"tipo": "crea_gruppo", "nome": nome})
+    time.sleep(0.3)
+    
+    print(f"Gruppo '{nome}' creato!")
 
-    inviaMsg(conn, {"tipo": "creaGruppo", "membri": membri, "destinazione": nome})
-    time.sleep(0.2)
 
-
-# -------------------------
-# MAIN CLIENT
-# -------------------------
-
-def main():
-    global username
-
+def avvia_client():
+    """Avvia il client"""
+    global username, login_ok
+    
+    # Connessione al server
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect(('localhost', 5000))
-
-    print("Connesso al server!\n")
-
+    
+    try:
+        client.connect(('localhost', 5000))
+        print("Connesso al server!\n")
+    except:
+        print("Impossibile connettersi al server")
+        return
+    
+    # Avvia thread per ricevere messaggi
+    thread = threading.Thread(target=ricevi_messaggi, args=(client,))
+    thread.daemon = True
+    thread.start()
+    
+    # LOGIN
     while True:
-        username = input("Inserisci username: ")
-        if len(username) > 3:
+        username = input("Username: ")
+        
+        risposta_login.clear()
+        invia_messaggio(client, {"username": username})
+        risposta_login.wait(timeout=2)
+        
+        if login_ok:
+            print("Login effettuato!\n")
             break
-        print("Troppo corto")
-
-    inviaMsg(client, {"username": username})
-
-    threading.Thread(target=riceviMsg, args=(client,), daemon=True).start()
-
-    menu_principale(client)
+        else:
+            print("Username già in uso, riprova\n")
+    
+    # Menu principale
+    try:
+        menu_principale(client)
+    except KeyboardInterrupt:
+        print("\nChiusura...")
+    finally:
+        client.close()
 
 
 if __name__ == "__main__":
-    main()
+    avvia_client()
