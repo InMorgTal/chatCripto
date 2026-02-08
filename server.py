@@ -5,25 +5,36 @@ import json
 # Dizionari principali
 utenti = {}          # username → connessione
 gruppi = {}          # nome_gruppo → {membri:[], messaggi:[]}
-chatPrivate = {}     # (utente1,utente2) → {membri:[], messaggi:[]}
+chatPrivate = {}     # "user1_user2" → {membri:[], messaggi:[]}
 
 
 # -------------------------
 # Funzioni utili
 # -------------------------
 
-def creaChiaveChatPrivata(a, b):
-    """Restituisce una tupla ordinata per identificare una chat privata."""
-    return tuple(sorted([a, b]))
+def creaIdChatPrivata(utente1, utente2):
+    """Crea un ID ordinato per identificare una chat privata tra due utenti."""
+    # Mette i nomi in ordine alfabetico e li unisce con _
+    # Esempio: "mario" e "alice" → "alice_mario"
+    if utente1 < utente2:
+        return f"{utente1}_{utente2}"
+    else:
+        return f"{utente2}_{utente1}"
 
 
 def riceviMsg(conn):
     """Riceve un messaggio JSON terminato da newline."""
     buffer = ""
     while True:
-        data = conn.recv(2048).decode()
+        try:
+            data = conn.recv(2048).decode()
+        except:
+            # Errore nella ricezione (client disconnesso)
+            return None
+            
         if not data:
             return None
+            
         buffer += data
         while "\n" in buffer:
             msg_str, buffer = buffer.split("\n", 1)
@@ -35,7 +46,10 @@ def riceviMsg(conn):
 
 def inviaMsg(conn, msg):
     """Invia un messaggio JSON con newline finale."""
-    conn.sendall((json.dumps(msg) + "\n").encode())
+    try:
+        conn.sendall((json.dumps(msg) + "\n").encode())
+    except:
+        pass  # Client disconnesso, ignora
 
 
 # -------------------------
@@ -43,80 +57,104 @@ def inviaMsg(conn, msg):
 # -------------------------
 
 def messaggio(msg):
-    sorg = msg["sorgente"]
-    dest = msg["destinazione"]
+    mittente = msg["mittente"]
+    destinazione = msg["destinazione"]
+    tipo_chat = msg["tipo_chat"]  # "gruppo" o "privata"
 
     # Caso GRUPPO
-    if isinstance(dest, str) and dest in gruppi:
-        gruppi[dest]["messaggi"].append(msg)
-        for u in gruppi[dest]["membri"]:
-            if u != sorg and u in utenti:
-                inviaMsg(utenti[u], msg)
-        return
+    if tipo_chat == "gruppo":
+        # Salva il messaggio nello storico del gruppo
+        gruppi[destinazione]["messaggi"].append(msg)
+        
+        # Invia il messaggio a tutti i membri del gruppo (tranne il mittente)
+        for utente in gruppi[destinazione]["membri"]:
+            if utente != mittente and utente in utenti:
+                inviaMsg(utenti[utente], msg)
 
-    # Caso PRIVATO
-    if isinstance(dest, str):
-        dest = eval(dest)  # converte "('a','b')" → ('a','b')
-
-    key = creaChiaveChatPrivata(dest[0], dest[1])
-
-    if key not in chatPrivate:
-        chatPrivate[key] = {"membri": list(key), "messaggi": []}
-
-    chatPrivate[key]["messaggi"].append(msg)
-
-    for u in key:
-        if u != sorg and u in utenti:
-            inviaMsg(utenti[u], msg)
+    # Caso CHAT PRIVATA
+    else:
+        # Crea l'ID della chat privata
+        chat_id = creaIdChatPrivata(mittente, destinazione)
+        
+        # Se la chat non esiste ancora, creala
+        if chat_id not in chatPrivate:
+            chatPrivate[chat_id] = {
+                "membri": [mittente, destinazione],
+                "messaggi": []
+            }
+        
+        # Salva il messaggio
+        chatPrivate[chat_id]["messaggi"].append(msg)
+        
+        # Invia il messaggio al destinatario
+        if destinazione in utenti:
+            inviaMsg(utenti[destinazione], msg)
 
 
 def creaGruppo(msg):
-    nome = msg["destinazione"]
+    nome = msg["nome"]
+    membri = msg["membri"]
+    
     if nome not in gruppi:
         gruppi[nome] = {
-            "membri": msg["membri"],
+            "membri": membri,
             "messaggi": []
         }
+        print(f"[SERVER] Gruppo '{nome}' creato con membri: {membri}")
 
 
 def iniziaConversazione(msg):
-    a, b = msg["membri"]
-    key = creaChiaveChatPrivata(a, b)
-    if key not in chatPrivate:
-        chatPrivate[key] = {
-            "membri": [a, b],
+    utente1 = msg["utente1"]
+    utente2 = msg["utente2"]
+    
+    chat_id = creaIdChatPrivata(utente1, utente2)
+    
+    if chat_id not in chatPrivate:
+        chatPrivate[chat_id] = {
+            "membri": [utente1, utente2],
             "messaggi": []
         }
+        print(f"[SERVER] Chat privata creata tra '{utente1}' e '{utente2}'")
 
 
 def caricaChat(conn, msg):
-    user = msg["sorgente"]
+    utente = msg["utente"]
     lista = []
 
-    # gruppi
+    # Aggiungi tutti i gruppi di cui fa parte
     for nome, info in gruppi.items():
-        if user in info["membri"]:
-            lista.append(nome)
+        if utente in info["membri"]:
+            lista.append({
+                "nome": nome,
+                "tipo": "gruppo"
+            })
 
-    # chat private
-    for key, info in chatPrivate.items():
-        if user in info["membri"]:
-            lista.append(str(key))
+    # Aggiungi tutte le chat private
+    for chat_id, info in chatPrivate.items():
+        if utente in info["membri"]:
+            # Trova l'altro utente nella chat
+            altro_utente = info["membri"][0] if info["membri"][1] == utente else info["membri"][1]
+            lista.append({
+                "nome": altro_utente,
+                "tipo": "privata"
+            })
 
     inviaMsg(conn, {"tipo": "caricaChat", "chat": lista})
 
 
 def apriChat(conn, msg):
-    nome = msg["chat"]
+    utente = msg["utente"]
+    nome_chat = msg["nome_chat"]
+    tipo_chat = msg["tipo_chat"]
 
-    # privata
-    if nome.startswith("("):
-        key = eval(nome)
-        mess = chatPrivate[key]["messaggi"]
+    if tipo_chat == "gruppo":
+        messaggi = gruppi[nome_chat]["messaggi"]
     else:
-        mess = gruppi[nome]["messaggi"]
+        # Crea l'ID della chat privata
+        chat_id = creaIdChatPrivata(utente, nome_chat)
+        messaggi = chatPrivate[chat_id]["messaggi"]
 
-    inviaMsg(conn, {"tipo": "chatAperta", "messaggi": mess})
+    inviaMsg(conn, {"tipo": "chatAperta", "messaggi": messaggi})
 
 
 # -------------------------
@@ -124,35 +162,66 @@ def apriChat(conn, msg):
 # -------------------------
 
 def gestisciClient(conn):
-    # Primo messaggio: username
-    while True:
-        username = conn.recv(2048).decode()
-        
-        if username not in utenti:
-            break
-        conn.sendall("Username occupato".encode())
+    username = None
+    try:
+        # Primo messaggio: username
+        while True:
+            try:
+                username = conn.recv(2048).decode()
+                if not username:
+                    # Client disconnesso prima di inviare username
+                    return
+            except:
+                # Errore nella ricezione
+                return
+            
+            if username not in utenti:
+                try:
+                    conn.sendall("OK".encode())
+                    print(f"[SERVER] Utente '{username}' connesso")
+                    break
+                except:
+                    # Errore nell'invio
+                    return
+            
+            try:
+                conn.sendall("Username occupato".encode())
+            except:
+                # Client disconnesso
+                return
 
-    utenti[username] = conn
+        utenti[username] = conn
+        print(f"[SERVER] Utenti connessi: {len(utenti)} - {list(utenti.keys())}")
 
-    # Loop principale
-    while True:
-        msg = riceviMsg(conn)
-        if msg is None:
+        # Loop principale: ricevi ed esegui comandi
+        while True:
+            msg = riceviMsg(conn)
+            if msg is None:
+                break
+
+            tipo = msg["tipo"]
+
+            if tipo == "messaggio":
+                messaggio(msg)
+            elif tipo == "creaGruppo":
+                creaGruppo(msg)
+            elif tipo == "iniziaConv":
+                iniziaConversazione(msg)
+            elif tipo == "caricaChat":
+                caricaChat(conn, msg)
+            elif tipo == "apriChat":
+                apriChat(conn, msg)
+                
+    finally:
+        # Quando il client si disconnette, pulisci tutto
+        if username and username in utenti:
             del utenti[username]
-            return
-
-        tipo = msg["tipo"]
-
-        if tipo == "messaggio":
-            messaggio(msg)
-        elif tipo == "creaGruppo":
-            creaGruppo(msg)
-        elif tipo == "iniziaConv":
-            iniziaConversazione(msg)
-        elif tipo == "caricaChat":
-            caricaChat(conn, msg)
-        elif tipo == "apriChat":
-            apriChat(conn, msg)
+            print(f"[SERVER] Utente '{username}' disconnesso")
+            print(f"[SERVER] Utenti connessi: {len(utenti)} - {list(utenti.keys())}")
+        try:
+            conn.close()
+        except:
+            pass
 
 
 # -------------------------
@@ -160,14 +229,17 @@ def gestisciClient(conn):
 # -------------------------
 
 def main():
+    # Crea il socket del server
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('localhost', 5000))
     server.listen(20)
 
     print("Server attivo su porta 5000...")
 
+    # Accetta connessioni in loop infinito
     while True:
         conn, addr = server.accept()
+        # Crea un thread per gestire ogni client
         threading.Thread(target=gestisciClient, args=(conn,), daemon=True).start()
 
 
