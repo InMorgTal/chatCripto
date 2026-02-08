@@ -3,6 +3,7 @@ import threading
 import json
 import time
 import os
+import cittografiaClient as cc
 
 username = ""
 chat_list = []  # Lista di dizionari: {"nome": "...", "tipo": "gruppo" o "privata"}
@@ -10,14 +11,19 @@ chat_storico = []
 chat_corrente = None  # Dizionario della chat aperta: {"nome": "...", "tipo": "..."}
 
 
-def riceviMsg(conn):
-    """Thread che ascolta continuamente i messaggi dal server"""
+def riceviMsg(conn, key):
+    #"""Thread che ascolta continuamente i messaggi dal server"""
     global chat_list, chat_storico, chat_corrente
+
     buffer = ""
 
     while True:
         try:
-            data = conn.recv(2048).decode()
+            tag = cc.recv_exact(conn, 16)
+            nonce = cc.recv_exact(conn, 12)
+            msg_len = int.from_bytes(cc.recv_exact(conn, 4), 'big')
+            encrypted_msg = cc.recv_exact(conn, msg_len)  # Assicurati di leggere l'intera risposta cifrata
+            data = key.decriptare(encrypted_msg, tag, nonce)
         except:
             break
 
@@ -50,8 +56,14 @@ def riceviMsg(conn):
 
 
 def inviaMsg(conn, msg):
-    """Invia un messaggio JSON al server"""
-    conn.sendall((json.dumps(msg) + "\n").encode())
+    key = cc.get_aes_key()
+    #Invia un messaggio JSON al server
+    data = json.dumps(msg).encode()
+    encrypted_text, tag, nonce = key.criptare(data)
+    conn.sendall(tag)
+    conn.sendall(nonce)
+    conn.sendall(len(encrypted_text).to_bytes(4, 'big'))
+    conn.sendall(encrypted_text)
 
 
 # -------------------------
@@ -219,11 +231,17 @@ def crea_gruppo(conn):
 def main():
     global username
 
+    key = cc.crea_aes_key()  # Crea una chiave AES se non esiste già
     # Connessione al server
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(('localhost', 5000))
 
     print("Connesso al server!\n")
+
+    public_key = cc.ricevere_RSAkey(client)
+    encripted_key = cc.cripta_RSA(public_key, key)
+    client.sendall(len(encripted_key).to_bytes(4, 'big'))
+    cc.sendAESkey(encripted_key, client)
 
     # Login con username
     while True:
@@ -238,7 +256,7 @@ def main():
             break
 
     # Avvia il thread che ascolta i messaggi dal server
-    threading.Thread(target=riceviMsg, args=(client,), daemon=True).start()
+    threading.Thread(target=riceviMsg, args=(client, key), daemon=True).start()
 
     # Mostra il menu principale
     menu_principale(client)
