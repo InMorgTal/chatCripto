@@ -1,4 +1,0 @@
--Si possono creare multiple chat private indirizzate allo stesso utente
--I nomi delle chat private si rompono, per esempio: "utente1_utente1_utente2"
--Nel server quando si scollega un utente appaiono due messaggi di disconnessione
--si possono iniziare chat private con utenti non esistenti
