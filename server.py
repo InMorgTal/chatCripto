@@ -1,6 +1,7 @@
 import socket
 import threading
 import json
+import cittografiaServer as cs
 
 # Dizionari principali
 utenti = {}          # username → connessione
@@ -13,7 +14,7 @@ chatPrivate = {}     # "user1_user2" → {membri:[], messaggi:[]}
 # -------------------------
 
 def creaIdChatPrivata(utente1, utente2):
-    """Crea un ID ordinato per identificare una chat privata tra due utenti."""
+    #"""Crea un ID ordinato per identificare una chat privata tra due utenti."""
     # Mette i nomi in ordine alfabetico e li unisce con _
     # Esempio: "mario" e "alice" → "alice_mario"
     if utente1 < utente2:
@@ -22,12 +23,16 @@ def creaIdChatPrivata(utente1, utente2):
         return f"{utente2}_{utente1}"
 
 
-def riceviMsg(conn):
-    """Riceve un messaggio JSON terminato da newline."""
+def riceviMsg(conn, key):
+    #"""Riceve un messaggio JSON terminato da newline."""
     buffer = ""
     while True:
         try:
-            data = conn.recv(2048).decode()
+            tag = cs.recv_exact(conn, 16)
+            nonce = cs.recv_exact(conn, 12)
+            msg_len = int.from_bytes(cs.recv_exact(conn, 4), 'big')
+            encrypted_msg = cs.recv_exact(conn, msg_len)  # Assicurati di leggere l'intera risposta cifrata
+            data = key.decriptare(encrypted_msg, tag, nonce)
         except:
             # Errore nella ricezione (client disconnesso)
             return None
@@ -44,10 +49,15 @@ def riceviMsg(conn):
                 continue
 
 
-def inviaMsg(conn, msg):
-    """Invia un messaggio JSON con newline finale."""
+def inviaMsg(conn, msg, key):
+    #"""Invia un messaggio JSON con newline finale."""
     try:
-        conn.sendall((json.dumps(msg) + "\n").encode())
+        data = json.dumps(msg).encode()
+        encrypted_text, tag, nonce = key.criptare(data)
+        conn.sendall(tag)
+        conn.sendall(nonce)
+        conn.sendall(len(encrypted_text).to_bytes(4, 'big'))
+        conn.sendall(encrypted_text)
     except:
         pass  # Client disconnesso, ignora
 
@@ -56,7 +66,7 @@ def inviaMsg(conn, msg):
 # Gestione messaggi
 # -------------------------
 
-def messaggio(msg):
+def messaggio(msg, key):
     mittente = msg["mittente"]
     destinazione = msg["destinazione"]
     tipo_chat = msg["tipo_chat"]  # "gruppo" o "privata"
@@ -69,7 +79,7 @@ def messaggio(msg):
         # Invia il messaggio a tutti i membri del gruppo (tranne il mittente)
         for utente in gruppi[destinazione]["membri"]:
             if utente != mittente and utente in utenti:
-                inviaMsg(utenti[utente], msg)
+                inviaMsg(utenti[utente], msg, key)
 
     # Caso CHAT PRIVATA
     else:
@@ -161,7 +171,7 @@ def apriChat(conn, msg):
 # Gestione client
 # -------------------------
 
-def gestisciClient(conn):
+def gestisciClient(conn, key):
     username = None
     try:
         # Primo messaggio: username
@@ -195,14 +205,14 @@ def gestisciClient(conn):
 
         # Loop principale: ricevi ed esegui comandi
         while True:
-            msg = riceviMsg(conn)
+            msg = riceviMsg(conn, key)
             if msg is None:
                 break
 
             tipo = msg["tipo"]
 
             if tipo == "messaggio":
-                messaggio(msg)
+                messaggio(msg, key)
             elif tipo == "creaGruppo":
                 creaGruppo(msg)
             elif tipo == "iniziaConv":
@@ -230,6 +240,8 @@ def gestisciClient(conn):
 
 def main():
     # Crea il socket del server
+    cs.genera_RSAkeys()  # Genera le chiavi RSA all'avvio del server
+    
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('localhost', 5000))
     server.listen(20)
@@ -239,8 +251,12 @@ def main():
     # Accetta connessioni in loop infinito
     while True:
         conn, addr = server.accept()
+        cs.sendPublicKeyToClient(conn)
+        encrypted_key = cs.receiveEncryptedAESFromClient(conn)
+        key = cs.decryptMessageRSA(encrypted_key)
+
         # Crea un thread per gestire ogni client
-        threading.Thread(target=gestisciClient, args=(conn,), daemon=True).start()
+        threading.Thread(target=gestisciClient, args=(conn, key), daemon=True).start()
 
 
 if __name__ == "__main__":
