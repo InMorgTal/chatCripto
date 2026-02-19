@@ -1,5 +1,7 @@
 from Crypto.PublicKey import RSA
 from Crypto.Util.number import bytes_to_long,long_to_bytes
+from Crypto.Protocol.KDF import PBKDF2
+import os
 import Key
 
 def recv_exact(sock, n):
@@ -11,7 +13,7 @@ def recv_exact(sock, n):
         data += packet
     return data
 
-def get_private_key(password="ciaoSonoUnaPassword"):    #TESTATO: funziona
+def get_private_key(password):    #TESTATO: funziona
     private_key_data = open("generate_RSA_keys/private_key.pem", "rb").read()
     return RSA.import_key(private_key_data, passphrase=password)
 
@@ -20,17 +22,38 @@ def get_public_key():   #TESTATO: funziona
     return RSA.import_key(public_key_data)
 
 def genera_RSAkeys():   #TESTATO: funziona
-    print("generazioneRsA")
     key = RSA.generate(2048)
+    private_key_path = "generate_RSA_keys/private_key.pem"
 
-    private_key = key.export_key(passphrase="ciaoSonoUnaPassword")
-    with open("generate_RSA_keys/private_key.pem", "wb") as f:
-        f.write(private_key)
+    if os.path.exists(private_key_path) and os.path.getsize(private_key_path) > 0:
+        confirm_password = input("Inserire la password per proteggere la chiave privata esistente: ")
+        for i in range(3):
+            try:
+                # Prova a importare la chiave privata con la password fornita
+                with open(private_key_path, "rb") as f:
+                    RSA.import_key(f.read(), passphrase=confirm_password)
+                print("Password corretta.")
+                return  confirm_password# Esce dalla funzione senza sovrascrivere il file
+            except ValueError:
+                print("Password errata. (Tentativo {}/3)".format(i + 1))
+        return -1
+    else:
+        password = input("Inserire password per proteggere la nuova chiave privata: ")
+        private_key = key.export_key(
+            format="PEM",
+            passphrase=password,
+            pkcs=8,
+            protection="PBKDF2WithHMAC-SHA256AndAES256-CBC"
+        )
+        with open(private_key_path, "wb") as f:
+            f.write(private_key)
 
-    public_key = key.publickey().export_key()
-    with open("generate_RSA_keys/public_key.pem", "wb") as f:
-        f.write(public_key)
-    print("Fine generazioneRsA")
+        public_key = key.publickey().export_key()
+        with open("generate_RSA_keys/public_key.pem", "wb") as f:
+            f.write(public_key)
+
+        print("Nuova coppia di chiavi RSA generata e salvata con successo.")
+        return password
 
 def sendPublicKeyToClient(conn):
     print("manda chiave pubblica")
@@ -49,9 +72,8 @@ def save_aes_key(nome, key):
     global utenti
     utenti[nome].append(key)
 
-def decryptMessageRSA(AES_key_encrypted):
-
-    pvt = get_private_key()
+def decryptMessageRSA(AES_key_encrypted, password):
+    pvt = get_private_key(password)
 
     n = pvt.n
     d = pvt.d
