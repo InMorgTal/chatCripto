@@ -1,6 +1,5 @@
 from Crypto.PublicKey import RSA
 from Crypto.Util.number import bytes_to_long,long_to_bytes
-from Crypto.Protocol.KDF import PBKDF2
 import os
 import Key
 
@@ -26,8 +25,8 @@ def genera_RSAkeys():   #TESTATO: funziona
     private_key_path = "generate_RSA_keys/private_key.pem"
 
     if os.path.exists(private_key_path) and os.path.getsize(private_key_path) > 0:
-        confirm_password = input("Inserire la password per proteggere la chiave privata esistente: ")
         for i in range(3):
+            confirm_password = input("Inserire la password per proteggere la chiave privata esistente: ")
             try:
                 # Prova a importare la chiave privata con la password fornita
                 with open(private_key_path, "rb") as f:
