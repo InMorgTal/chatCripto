@@ -106,7 +106,7 @@ def menu_vedi_chat(conn, key):
 
     # Chiedi al server la lista delle chat
     inviaMsg(conn, {"tipo": "caricaChat", "utente": username}, key)
-    time.sleep(3)
+    time.sleep(0.2)
 
     while True:
         os.system("cls")
@@ -149,7 +149,7 @@ def apri_chat(conn, chat, key):
         "nome_chat": chat["nome"],
         "tipo_chat": chat["tipo"]
     }, key)
-    time.sleep(3)
+    time.sleep(0.2)
 
     # Stampa lo storico iniziale
     os.system("cls")
@@ -198,7 +198,7 @@ def nuova_chat_privata(conn, key):
         "utente1": username,
         "utente2": destinatario
     }, key)
-    time.sleep(3)
+    time.sleep(0.2)
 
 
 def crea_gruppo(conn, key):
@@ -225,7 +225,7 @@ def crea_gruppo(conn, key):
         "nome": nome,
         "membri": membri
     }, key)
-    time.sleep(3)
+    time.sleep(0.2)
 
 
 # -------------------------
