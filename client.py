@@ -55,10 +55,10 @@ def riceviMsg(conn, key):
                     print("", end="", flush=True)
 
 
-def inviaMsg(conn, msg):
-    key = cc.get_aes_key()
+def inviaMsg(conn, msg, key):
     #Invia un messaggio JSON al server
-    data = json.dumps(msg).encode()
+    data = json.dumps(msg) + "\n"
+    data = data.encode()
     encrypted_text, tag, nonce = key.criptare(data)
     conn.sendall(tag)
     conn.sendall(nonce)
@@ -70,7 +70,7 @@ def inviaMsg(conn, msg):
 # MENU PRINCIPALE
 # -------------------------
 
-def menu_principale(conn):
+def menu_principale(conn, key):
     while True:
         os.system("cls")
         print("--- MENU PRINCIPALE ---")
@@ -81,28 +81,32 @@ def menu_principale(conn):
 
         scelta = input("Scelta: ")
 
-        if scelta == "1":
-            menu_vedi_chat(conn)
-        elif scelta == "2":
-            nuova_chat_privata(conn)
-        elif scelta == "3":
-            crea_gruppo(conn)
-        elif scelta == "4":
-            print("Uscita...")
-            conn.close()
-            return
+        match scelta:
+            case "1":
+                menu_vedi_chat(conn, key)
+                pass
+            case "2":
+                nuova_chat_privata(conn, key)
+                pass
+            case "3":
+                crea_gruppo(conn, key)
+                pass
+            case "4":
+                print("Uscita...")
+                conn.close()
+                return
 
 
 # -------------------------
 # MENU CHAT
 # -------------------------
 
-def menu_vedi_chat(conn):
+def menu_vedi_chat(conn, key):
     global chat_list
 
     # Chiedi al server la lista delle chat
-    inviaMsg(conn, {"tipo": "caricaChat", "utente": username})
-    time.sleep(0.2)
+    inviaMsg(conn, {"tipo": "caricaChat", "utente": username}, key)
+    time.sleep(3)
 
     while True:
         os.system("cls")
@@ -123,7 +127,7 @@ def menu_vedi_chat(conn):
         try:
             scelta = int(scelta)
             if 1 <= scelta <= len(chat_list):
-                apri_chat(conn, chat_list[scelta-1])
+                apri_chat(conn, chat_list[scelta-1], key)
         except:
             pass
 
@@ -132,7 +136,7 @@ def menu_vedi_chat(conn):
 # CHAT IN TEMPO REALE
 # -------------------------
 
-def apri_chat(conn, chat):
+def apri_chat(conn, chat, key):
     """Apre una chat (gruppo o privata)"""
     global chat_storico, chat_corrente
 
@@ -144,8 +148,8 @@ def apri_chat(conn, chat):
         "utente": username,
         "nome_chat": chat["nome"],
         "tipo_chat": chat["tipo"]
-    })
-    time.sleep(0.2)
+    }, key)
+    time.sleep(3)
 
     # Stampa lo storico iniziale
     os.system("cls")
@@ -171,14 +175,14 @@ def apri_chat(conn, chat):
             "destinazione": chat["nome"],
             "tipo_chat": chat["tipo"],
             "testo": testo
-        })
+        }, key)
 
 
 # -------------------------
 # CREAZIONE CHAT
 # -------------------------
 
-def nuova_chat_privata(conn):
+def nuova_chat_privata(conn, key):
     """Crea una nuova chat privata con un utente"""
     global username
 
@@ -193,11 +197,11 @@ def nuova_chat_privata(conn):
         "tipo": "iniziaConv",
         "utente1": username,
         "utente2": destinatario
-    })
-    time.sleep(0.2)
+    }, key)
+    time.sleep(3)
 
 
-def crea_gruppo(conn):
+def crea_gruppo(conn, key):
     """Crea un nuovo gruppo"""
     membri = []
 
@@ -220,8 +224,8 @@ def crea_gruppo(conn):
         "tipo": "creaGruppo",
         "nome": nome,
         "membri": membri
-    })
-    time.sleep(0.2)
+    }, key)
+    time.sleep(3)
 
 
 # -------------------------
@@ -259,7 +263,7 @@ def main():
     threading.Thread(target=riceviMsg, args=(client, key), daemon=True).start()
 
     # Mostra il menu principale
-    menu_principale(client)
+    menu_principale(client, key)
 
 
 if __name__ == "__main__":
