@@ -46,13 +46,18 @@ def riceviMsg(conn, key):
             try:
                 return json.loads(msg_str)
             except:
+                # Errore nel parsing JSON, ignora e aspetta il prossimo messaggio
+                print("[SERVER] Errore nel parsing JSON, messaggio ignorato")
+                print("[SERVER] Dati ricevuti (decriptati):", msg_str)
                 continue
+        
 
 
 def inviaMsg(conn, msg, key):
     #"""Invia un messaggio JSON con newline finale."""
     try:
-        data = json.dumps(msg).encode()
+        data = json.dumps(msg) + "\n"
+        data = data.encode()
         encrypted_text, tag, nonce = key.criptare(data)
         conn.sendall(tag)
         conn.sendall(nonce)
@@ -98,10 +103,11 @@ def messaggio(msg, key):
         
         # Invia il messaggio al destinatario
         if destinazione in utenti:
-            inviaMsg(utenti[destinazione], msg)
+            inviaMsg(utenti[destinazione], msg, key)
 
 
 def creaGruppo(msg):
+    global gruppi
     nome = msg["nome"]
     membri = msg["membri"]
     
@@ -114,6 +120,7 @@ def creaGruppo(msg):
 
 
 def iniziaConversazione(msg):
+    global chatPrivate
     utente1 = msg["utente1"]
     utente2 = msg["utente2"]
     
@@ -127,7 +134,8 @@ def iniziaConversazione(msg):
         print(f"[SERVER] Chat privata creata tra '{utente1}' e '{utente2}'")
 
 
-def caricaChat(conn, msg):
+def caricaChat(conn, msg, key):
+    global gruppi, chatPrivate
     utente = msg["utente"]
     lista = []
 
@@ -149,10 +157,11 @@ def caricaChat(conn, msg):
                 "tipo": "privata"
             })
 
-    inviaMsg(conn, {"tipo": "caricaChat", "chat": lista})
+    inviaMsg(conn, {"tipo": "caricaChat", "chat": lista}, key)
 
 
-def apriChat(conn, msg):
+def apriChat(conn, msg, key):
+    global gruppi, chatPrivate
     utente = msg["utente"]
     nome_chat = msg["nome_chat"]
     tipo_chat = msg["tipo_chat"]
@@ -164,7 +173,7 @@ def apriChat(conn, msg):
         chat_id = creaIdChatPrivata(utente, nome_chat)
         messaggi = chatPrivate[chat_id]["messaggi"]
 
-    inviaMsg(conn, {"tipo": "chatAperta", "messaggi": messaggi})
+    inviaMsg(conn, {"tipo": "chatAperta", "messaggi": messaggi}, key)
 
 
 # -------------------------
@@ -211,16 +220,25 @@ def gestisciClient(conn, key):
 
             tipo = msg["tipo"]
 
-            if tipo == "messaggio":
-                messaggio(msg, key)
-            elif tipo == "creaGruppo":
-                creaGruppo(msg)
-            elif tipo == "iniziaConv":
-                iniziaConversazione(msg)
-            elif tipo == "caricaChat":
-                caricaChat(conn, msg)
-            elif tipo == "apriChat":
-                apriChat(conn, msg)
+            match tipo:
+                case "messaggio":
+                    messaggio(msg, key)
+                    pass
+                case "creaGruppo":
+                    creaGruppo(msg)
+                    pass
+                case "iniziaConv":
+                    iniziaConversazione(msg)
+                    pass
+                case "caricaChat":
+                    caricaChat(conn, msg, key)
+                    pass
+                case "apriChat":
+                    apriChat(conn, msg, key)
+                    pass
+                case _:
+                    print(f"[SERVER] Comando sconosciuto: {tipo}")
+
                 
     finally:
         # Quando il client si disconnette, pulisci tutto
@@ -240,7 +258,7 @@ def gestisciClient(conn, key):
 
 def main():
     # Crea il socket del server
-    cs.genera_RSAkeys()  # Genera le chiavi RSA all'avvio del server
+    password = cs.genera_RSAkeys()  # Genera le chiavi RSA all'avvio del server
     
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind(('localhost', 5000))
@@ -253,7 +271,7 @@ def main():
         conn, addr = server.accept()
         cs.sendPublicKeyToClient(conn)
         encrypted_key = cs.receiveEncryptedAESFromClient(conn)
-        key = cs.decryptMessageRSA(encrypted_key)
+        key = cs.decryptMessageRSA(encrypted_key, password )
 
         # Crea un thread per gestire ogni client
         threading.Thread(target=gestisciClient, args=(conn, key), daemon=True).start()
